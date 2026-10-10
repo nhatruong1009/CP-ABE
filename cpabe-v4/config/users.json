@@ -1,0 +1,8 @@
+{
+  "alice": { "password": "alice123", "app_role": "owner", "attributes": { "Dept": "Records", "Role": "DataOwner" } },
+  "bob":   { "password": "bob123",   "app_role": "user",  "attributes": { "Dept": "Cardiology", "Role": "Doctor" } },
+  "carol": { "password": "carol123", "app_role": "user",  "attributes": { "Dept": "Cardiology", "Role": "Nurse" } },
+  "dave":  { "password": "dave123",  "app_role": "user",  "attributes": { "Dept": "Finance", "Role": "Cashier" } },
+  "erin":  { "password": "erin123",  "app_role": "user",  "attributes": { "Dept": "Pediatrics", "Role": "Doctor" } },
+  "admin": { "password": "admin123", "app_role": "admin", "attributes": { "Dept": "IT", "Role": "Admin" } }
+}

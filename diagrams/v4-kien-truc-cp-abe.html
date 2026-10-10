@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kiến trúc CP-ABE v4.3</title>
+<style>
+:root{--bg:#ffffff;--fg:#1a1a1a;--muted:#555;--line:#d0d7de}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0d1117;--fg:#e6edf3;--muted:#9aa4ae;--line:#30363d}}
+:root[data-theme="dark"]{--bg:#0d1117;--fg:#e6edf3;--muted:#9aa4ae;--line:#30363d}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,sans-serif;max-width:1200px;margin:0 auto;padding:16px;line-height:1.5}
+h1{font-size:1.5rem}h2{font-size:1.2rem;margin-top:2rem;border-bottom:1px solid var(--line);padding-bottom:4px}
+.note{color:var(--muted);font-size:.9rem}
+pre.mermaid{background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto}
+</style></head><body>
+<h1>Sơ đồ kiến trúc CP-ABE — v4.1 → v4.3 (PoC)</h1>
+<p class="note">Sinh từ <code>v4-kien-truc-cp-abe.md</code>.</p>
+<h2>1. Ngữ cảnh hệ thống (C4 mức 1)</h2>
+<pre class="mermaid">
+flowchart LR
+    OW(["Data Owner&lt;br/&gt;(nhân viên tạo / sửa dữ liệu)"])
+    US(["User&lt;br/&gt;(Bác sĩ · Y tá · Thu ngân)"])
+    AD(["Admin&lt;br/&gt;(cấp / thu hồi quyền)"])
+    AU(["Auditor&lt;br/&gt;(bên kiểm toán độc lập)"])
+    HR[("HR Directory&lt;br/&gt;nguồn thuộc tính Dept, Role")]
+
+    SYS["HỆ THỐNG CP-ABE v4.1&lt;br/&gt;Lưu dữ liệu mã hóa trên cloud,&lt;br/&gt;kiểm soát truy cập bằng thuộc tính"]
+    CLOUD[("Cloud provider&lt;br/&gt;(không tin cậy)")]
+
+    OW -- "tạo / sửa / đổi policy / xóa" --&gt; SYS
+    US -- "đọc dữ liệu" --&gt; SYS
+    AD -- "cấp khóa, thu hồi" --&gt; SYS
+    AU -- "giám sát log, đồng ký checkpoint" --&gt; SYS
+    HR -- "thuộc tính user" --&gt; SYS
+    SYS -- "chỉ ciphertext + log" --&gt; CLOUD
+</pre>
+<h2>2. Container (C4 mức 2): ai chạy ở đâu</h2>
+<pre class="mermaid">
+flowchart TB
+    subgraph CLI["MÁY NGƯỜI DÙNG (client)"]
+        direction LR
+        OCLI["owner-cli&lt;br/&gt;Python · policy compiler (Cedar)&lt;br/&gt;AbeProvider.encaps · cAEAD"]
+        UCLI["user-cli&lt;br/&gt;Python · verify · decaps · cAEAD&lt;br/&gt;giữ SK_u, pk_DO, pk_witness"]
+    end
+
+    subgraph TRUST["VÙNG TIN CẬY — mạng nội bộ tổ chức (docker net: trusted)"]
+        direction LR
+        GW["gateway :8000&lt;br/&gt;FastAPI · AuthN token&lt;br/&gt;revocation list · định tuyến CRUD&lt;br/&gt;append log RECORD"]
+        KGC["kgc :8001&lt;br/&gt;FastAPI · Setup · KeyGen&lt;br/&gt;epoch · attr-version · revoke&lt;br/&gt;giữ MSK (sealed file)"]
+        KV["keyvault :8002&lt;br/&gt;FastAPI · KEK wrap/unwrap&lt;br/&gt;sign bằng sk_DO&lt;br/&gt;(giống Vault Transit)"]
+        WK["worker&lt;br/&gt;re-wrap / re-encrypt job&lt;br/&gt;Revocation Planner"]
+    end
+
+    subgraph CLOUDZ["VÙNG KHÔNG TIN CẬY — cloud (docker net: cloud)"]
+        direction LR
+        PG[("storage :5432&lt;br/&gt;PostgreSQL&lt;br/&gt;bảng encrypted_records")]
+        TL["translog :8003&lt;br/&gt;FastAPI + SQLite&lt;br/&gt;Merkle log append-only&lt;br/&gt;ký checkpoint bằng sk_log"]
+    end
+
+    AUD["auditor (witness)&lt;br/&gt;CLI / cron · độc lập&lt;br/&gt;kiểm consistency · đồng ký checkpoint"]
+
+    OCLI -- "HTTPS: PUT/PATCH/DELETE record" --&gt; GW
+    OCLI -- "HTTPS: wrap(CEK), sign(record)" --&gt; KV
+    OCLI -- "HTTPS: GET MPK, epoch" --&gt; KGC
+    UCLI -- "HTTPS: GET record" --&gt; GW
+    UCLI -- "HTTPS: xin SK" --&gt; KGC
+    UCLI -- "HTTPS: proof, checkpoint" --&gt; TL
+    KGC -- "push revocation list" --&gt; GW
+    KGC -- "append KEYGEN / REVOKE" --&gt; TL
+    KGC -- "kích hoạt job" --&gt; WK
+    WK -- "unwrap(CEK), sign(record)" --&gt; KV
+    WK -- "đọc / ghi header" --&gt; GW
+    GW -- "SQL" --&gt; PG
+    GW -- "append RECORD, lấy proof" --&gt; TL
+    AUD -- "lấy checkpoint, consistency proof" --&gt; TL
+    AUD -- "đẩy cosignature" --&gt; TL
+
+    classDef trusted fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef untrusted fill:#fdecea,stroke:#c62828,color:#7f0000
+    classDef client fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    classDef indep fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c
+    class GW,KGC,KV,WK trusted
+    class PG,TL untrusted
+    class OCLI,UCLI client
+    class AUD indep
+</pre>
+<h2>3. Bản đồ khóa và bí mật: khóa nào nằm ở đâu, ai được dùng</h2>
+<pre class="mermaid">
+flowchart LR
+    subgraph PUB["CÔNG KHAI"]
+        MPK(["MPK"])
+        PKDO(["pk_DO"])
+        PKL(["pk_log · pk_witness"])
+    end
+
+    subgraph KGCB["kgc"]
+        MSK(["MSK"])
+        SKKGC(["sk_kgc&lt;br/&gt;ký entry KEYGEN/REVOKE"])
+    end
+
+    subgraph KVB["keyvault"]
+        KEK(["KEK"])
+        SKDO(["sk_DO&lt;br/&gt;chữ ký owner"])
+    end
+
+    subgraph USERB["thiết bị user"]
+        SKU(["SK_u&lt;br/&gt;CP-ABE user key"])
+    end
+
+    subgraph TLB["translog (cloud)"]
+        SKLOG(["sk_log&lt;br/&gt;ký checkpoint"])
+    end
+
+    subgraph AUB["auditor"]
+        SKW(["sk_witness&lt;br/&gt;đồng ký checkpoint"])
+    end
+
+    subgraph EPH["TẠM THỜI — chỉ trong RAM"]
+        CEK(["CEK"]) --&gt; KENC(["K_enc"])
+        CEK --&gt; KCOM(["K_com"])
+    end
+
+    MSK -. "KeyGen" .-&gt; SKU
+    KEK -. "wrap/unwrap" .-&gt; CEK
+</pre>
+<h2>4. Triển khai (docker compose)</h2>
+<pre class="mermaid">
+flowchart TB
+    subgraph HOST["Máy chạy demo"]
+        subgraph NT["docker network: trusted"]
+            GW["gateway"]
+            KGC["kgc"]
+            KV["keyvault"]
+            WK["worker"]
+        end
+        subgraph NC["docker network: cloud"]
+            PG[("postgres")]
+            TL["translog"]
+        end
+        AUD["auditor (container riêng, network: audit)"]
+        CLI["owner-cli · user-cli (chạy trên host)"]
+        VOL[("volumes:&lt;br/&gt;kgc-sealed · kv-keys · pg-data · tl-data · aud-state")]
+    end
+
+    GW --- PG
+    GW --- TL
+    KGC --- TL
+    AUD --- TL
+    CLI --&gt; GW
+    CLI --&gt; KGC
+    CLI --&gt; KV
+    CLI --&gt; TL
+</pre>
+<h2>5. Transparency log: entry, checkpoint, witness</h2>
+<pre class="mermaid">
+flowchart LR
+    E1["KEYGEN&lt;br/&gt;user_pseudonym · H(attrs) · epoch · attr_versions&lt;br/&gt;sig_kgc"] --&gt; LOG
+    E2["REVOKE&lt;br/&gt;user_pseudonym hoặc attr · epoch / version mới&lt;br/&gt;sig_kgc"] --&gt; LOG
+    E3["RECORD&lt;br/&gt;record_id · version · H(record) · op: put/patch/delete&lt;br/&gt;(H(record) đã gồm owner_sig)"] --&gt; LOG
+    LOG[("Merkle log append-only")] --&gt; CP["Checkpoint&lt;br/&gt;size · root · time&lt;br/&gt;sig_log"]
+    CP --&gt; W["Witness (auditor)&lt;br/&gt;kiểm consistency với checkpoint trước&lt;br/&gt;đồng ký: sig_witness"]
+    W --&gt; OK["Checkpoint hợp lệ = có đủ sig_log + sig_witness"]
+    OK --&gt; C["user-cli chỉ tin checkpoint hợp lệ"]
+</pre>
+<h2>6. Luồng ghi (Create / Update)</h2>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant O as owner-cli
+    participant KGC as kgc
+    participant KV as keyvault
+    participant GW as gateway
+    participant PG as storage
+    participant TL as translog
+
+    O-&gt;&gt;KGC: GET /mpk, /epoch
+    O-&gt;&gt;O: biên dịch Cedar thành policy ABE, tính policy_hash
+    O-&gt;&gt;O: CEK mới, HKDF sinh K_enc, K_com
+    O-&gt;&gt;O: ciphertext = AES-GCM(K_enc, data, data_aad), commit = HMAC(K_com, nonce + data_aad)
+    O-&gt;&gt;O: (k_abe, kem) = encaps(MPK, policy AND epoch), wrap = AES-GCM(k_abe, CEK, header_aad)
+    O-&gt;&gt;KV: POST /wrap (CEK)
+    KV--&gt;&gt;O: kek_header
+    O-&gt;&gt;KV: POST /sign (H(record không có sig))
+    KV--&gt;&gt;O: owner_sig
+    O-&gt;&gt;GW: PUT /records/id (token owner)
+    GW-&gt;&gt;GW: kiểm tra token có vai trò owner, version = version + 1
+    GW-&gt;&gt;PG: INSERT / UPDATE
+    GW-&gt;&gt;TL: append RECORD(id, version, H(record))
+    TL--&gt;&gt;GW: log_index
+    GW--&gt;&gt;O: 201 + log_index
+</pre>
+<h2>7. Luồng đọc</h2>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as user-cli
+    participant GW as gateway
+    participant PG as storage
+    participant TL as translog
+
+    U-&gt;&gt;GW: GET /records/id (token user)
+    GW-&gt;&gt;GW: kiểm tra revocation list
+    GW-&gt;&gt;PG: SELECT
+    GW--&gt;&gt;U: EncryptedRecord + log_index
+    U-&gt;&gt;TL: GET checkpoint mới nhất + inclusion proof(log_index)
+    U-&gt;&gt;U: verify sig_log + sig_witness trên checkpoint
+    U-&gt;&gt;U: verify inclusion proof và version là mới nhất của record_id
+    U-&gt;&gt;U: verify owner_sig bằng pk_DO
+    alt có bước sai
+        U-&gt;&gt;U: từ chối (giả mạo / rollback / tráo)
+    else hợp lệ
+        U-&gt;&gt;U: k_abe = decaps(SK_u, kem), CEK = mở wrap bằng k_abe + header_aad
+        U-&gt;&gt;U: kiểm tra commit, rồi AES-GCM decrypt với data_aad
+    end
+</pre>
+<h2>8. Luồng cấp khóa</h2>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant U as user-cli
+    participant KGC as kgc
+    participant TL as translog
+
+    U-&gt;&gt;KGC: POST /keys (token user)
+    KGC-&gt;&gt;KGC: tra HR Directory lấy Dept, Role, gắn epoch + attr-version
+    KGC-&gt;&gt;KGC: SK_u = KeyGen(MSK, attrs)
+    KGC-&gt;&gt;TL: append KEYGEN(user_pseudonym, H(attrs), epoch), sig_kgc
+    TL--&gt;&gt;KGC: log_index
+    KGC--&gt;&gt;U: SK_u + log_index
+    U-&gt;&gt;TL: inclusion proof + checkpoint hợp lệ
+    U-&gt;&gt;U: lưu SK_u nếu entry của mình có trong log
+</pre>
+<h2>9. Luồng thu hồi</h2>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor A as Admin
+    participant KGC as kgc
+    participant GW as gateway
+    participant WK as worker
+    participant KV as keyvault
+    participant TL as translog
+
+    A-&gt;&gt;KGC: POST /revoke (user hoặc user + attr)
+    KGC-&gt;&gt;GW: cập nhật revocation list — chặn ngay
+    KGC-&gt;&gt;KGC: R1 tăng epoch hoặc R2 tăng attr-version
+    KGC-&gt;&gt;TL: append REVOKE
+    KGC-&gt;&gt;WK: tạo job (phạm vi bản ghi, user bị ảnh hưởng)
+    WK-&gt;&gt;WK: Planner chọn L0 / L1 / L2
+    loop bản ghi liên quan
+        WK-&gt;&gt;GW: GET record
+        WK-&gt;&gt;KV: POST /unwrap (kek_header)
+        WK-&gt;&gt;WK: L1 encaps mới + bọc lại CEK cũ (dữ liệu giữ nguyên), hoặc L0 CEK mới + re-encrypt
+        WK-&gt;&gt;KV: POST /sign (record mới)
+        WK-&gt;&gt;GW: PUT record (version + 1), gateway append RECORD
+    end
+    Note over KGC: user còn hợp lệ xin lại SK (luồng 8), mỗi khóa đều có entry KEYGEN
+    WK-&gt;&gt;WK: ghi revocation window, CEK exposure window
+</pre>
+<h2>10. Cấu trúc EncryptedRecord (v4.2 — KEM 3 lớp)</h2>
+<pre class="mermaid">
+flowchart LR
+    DATA["data"] --&gt; CA["cAEAD: HKDF(CEK) → K_enc, K_com&lt;br/&gt;AES-256-GCM + HMAC commit&lt;br/&gt;AAD = data_aad"]
+    CEK(["CEK ngẫu nhiên&lt;br/&gt;(sinh mới khi Create / Update)"]) --&gt; CA
+    CEK --&gt; W1["AES-GCM(k_abe, CEK)&lt;br/&gt;AAD = header_aad"]
+    CEK --&gt; W2["KEK wrap(CEK)&lt;br/&gt;context = record_id"]
+    POL["policy_abe"] --&gt; KEM["CP-ABE KEM (AbeProvider.encaps)"]
+    KEM --&gt; KABE(["k_abe"])
+    KABE --&gt; W1
+
+    subgraph REC["EncryptedRecord"]
+        M["record_id · version · content_version&lt;br/&gt;policy_abe · policy_ref · abe_backend"]
+        H["abe_header = { kem, wrap }"]
+        K["kek_header"]
+        C["aead { alg, nonce, commit } · ciphertext"]
+        S["owner_sig · log_index (tầng T5)"]
+    end
+    KEM --&gt; H
+    W1 --&gt; H
+    W2 --&gt; K
+    CA --&gt; C
+</pre>
+<h2>11. PoC phase 1 (v4.3): các docker image thực tế</h2>
+<pre class="mermaid">
+flowchart LR
+    subgraph HOST["docker compose — cpabe-v4"]
+        subgraph TR["network: trusted"]
+            AUTH["cpabe-v4/auth :8002&lt;br/&gt;login → JWT EdDSA&lt;br/&gt;thuộc tính user"]
+            KGC["cpabe-v4/kgc :8001&lt;br/&gt;Setup · KeyGen · epoch · revoke&lt;br/&gt;MSK sealed"]
+            KV["cpabe-v4/keyvault&lt;br/&gt;KEK wrap / unwrap"]
+            CL["cpabe-v4/client (CLI)&lt;br/&gt;owner · user · admin · worker-rewrap&lt;br/&gt;Encrypt / Decrypt tại đây"]
+        end
+        APP["cpabe-v4/app :8000&lt;br/&gt;CRUD · kiểm version&lt;br/&gt;chặn user bị thu hồi&lt;br/&gt;không giữ khóa"]
+        subgraph CLD["network: cloud"]
+            DB[("outsource-db&lt;br/&gt;postgres:16-alpine&lt;br/&gt;encrypted_records")]
+        end
+    end
+
+    CL -- "login" --&gt; AUTH
+    CL -- "fetch-key (JWT)" --&gt; KGC
+    KGC -- "thuộc tính (service token)" --&gt; AUTH
+    CL -- "wrap / unwrap CEK" --&gt; KV
+    CL -- "PUT / PATCH / GET / DELETE (JWT)" --&gt; APP
+    APP -- "revocation list" --&gt; KGC
+    APP -- "public key" --&gt; AUTH
+    KV -- "public key" --&gt; AUTH
+    APP -- "SQL (chỉ ciphertext)" --&gt; DB
+</pre>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:"default",securityLevel:"loose"});</script>
+</body></html>

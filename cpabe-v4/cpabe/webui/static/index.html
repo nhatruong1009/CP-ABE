@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CP-ABE PoC</title>
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--fg:#1c2128;--muted:#5b6573;--line:#d8dde3;
+  --accent:#1f6feb;--ok-bg:#e7f5ec;--ok:#1a7f37;--bad-bg:#fdecea;--bad:#c62828;
+  --warn-bg:#fff4dc;--warn:#9a6700;--code:#f1f3f5;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0d1117;--panel:#161b22;--fg:#e6edf3;--muted:#9aa4ae;--line:#30363d;
+  --accent:#4493f8;--ok-bg:#12261a;--ok:#3fb950;--bad-bg:#2d1416;--bad:#f85149;
+  --warn-bg:#2b2111;--warn:#d29922;--code:#0b0f14;}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0;flex:1}
+.wrap{display:grid;grid-template-columns:300px 1fr;gap:16px;padding:16px 20px;max-width:1400px;margin:0 auto}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:16px}
+.card h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 10px}
+button{font:inherit;border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+input,select,textarea{font:inherit;width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg)}
+textarea{min-height:70px}
+label{display:block;font-size:12px;color:var(--muted);margin:8px 0 3px}
+.users{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.users button{text-align:left}
+.users small{display:block;color:var(--muted)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;background:var(--code);border:1px solid var(--line);font-size:12px;margin:2px 2px 0 0}
+.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.banner{padding:10px 12px;border-radius:8px;margin:8px 0}
+.ok{background:var(--ok-bg);color:var(--ok)}.bad{background:var(--bad-bg);color:var(--bad)}.warn{background:var(--warn-bg);color:var(--warn)}
+pre{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:8px;overflow:auto;max-height:260px;margin:6px 0 0}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.hidden{display:none}
+#log li{margin-bottom:4px}
+#log .t{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>CP-ABE PoC — Outsourced storage với kiểm soát truy cập bằng thuộc tính</h1>
+  <span id="whoami" class="chip">chưa đăng nhập</span>
+  <button id="btnLogout" class="hidden">Đăng xuất</button>
+</header>
+
+<div class="wrap">
+  <aside>
+    <div class="card">
+      <h2>Đăng nhập (dịch vụ auth)</h2>
+      <div class="users" id="users"></div>
+    </div>
+
+    <div class="card hidden" id="statusCard">
+      <h2>Khóa CP-ABE (KGC)</h2>
+      <div id="status"></div>
+      <div class="row" style="margin-top:8px"><button class="primary" id="btnFetch">Lấy khóa từ KGC</button></div>
+    </div>
+
+    <div class="card hidden" id="adminCard">
+      <h2>Admin — thu hồi</h2>
+      <label>User cần thu hồi</label>
+      <select id="revokeUser"></select>
+      <div class="row" style="margin-top:8px">
+        <button class="danger" id="btnRevoke">Thu hồi (epoch +1)</button>
+        <button id="btnRewrap">Chạy worker re-wrap</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Nhật ký thao tác</h2>
+      <ul id="log" class="mono" style="padding-left:16px;margin:0"></ul>
+    </div>
+  </aside>
+
+  <main>
+    <div class="tabs">
+      <button class="active" data-tab="records">Bản ghi (góc nhìn user)</button>
+      <button data-tab="cloud">Góc nhìn cloud / DBA</button>
+    </div>
+
+    <section id="tab-records">
+      <div class="card">
+        <h2>Danh sách bản ghi <button id="btnReload" style="float:right">Tải lại</button></h2>
+        <table><thead><tr><th>ID</th><th>Version</th><th>Epoch</th><th>Policy</th><th></th></tr></thead>
+          <tbody id="records"><tr><td colspan="5">Hãy đăng nhập.</td></tr></tbody></table>
+      </div>
+
+      <div class="card" id="readerCard">
+        <h2>Đọc bản ghi</h2>
+        <div id="reader" class="mono">Chọn “Đọc” ở một bản ghi.</div>
+      </div>
+
+      <div class="card hidden" id="ownerCard">
+        <h2>Owner — tạo / cập nhật (mã hóa tại client)</h2>
+        <label>Record ID</label><input id="fId" value="BA-0001">
+        <label>Policy</label>
+        <select id="fPreset">
+          <option>(Dept:Cardiology AND Role:Doctor) OR Role:Director</option>
+          <option>Dept:Cardiology AND (Role:Doctor OR Role:Nurse)</option>
+          <option>Dept:Finance AND Role:Cashier</option>
+          <option>Role:Doctor</option>
+        </select>
+        <input id="fPolicy" style="margin-top:6px" value="(Dept:Cardiology AND Role:Doctor) OR Role:Director">
+        <label>Nội dung</label><textarea id="fText">Chẩn đoán: rung nhĩ. Điều trị: kháng đông.</textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="btnPut">Lưu (Create / Update — CEK mới)</button>
+          <button id="btnPolicy">Chỉ đổi policy (giữ ciphertext)</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-cloud" class="hidden">
+      <div class="card">
+        <h2>Dữ liệu trong outsource-db (những gì cloud / DBA nhìn thấy) <button id="btnCloud" style="float:right">Tải lại</button></h2>
+        <div id="cloud" class="mono">—</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ROLES = {alice:"owner", bob:"bác sĩ Tim mạch", carol:"y tá Tim mạch", dave:"thu ngân", erin:"bác sĩ Nhi", admin:"admin"};
+let ME = null;
+
+function log(msg, kind){
+  const li = document.createElement("li");
+  const text = kind ? `<b style="color:var(--${kind})">${esc(msg)}</b>` : esc(msg);
+  li.innerHTML = `<span class="t">${new Date().toLocaleTimeString()}</span> ${text}`;
+  $("#log").prepend(li);
+}
+
+async function api(method, path, body){
+  const r = await fetch(path, {method, headers: body?{"Content-Type":"application/json"}:{}, body: body?JSON.stringify(body):undefined});
+  let data; try { data = await r.json(); } catch { data = {}; }
+  if (!r.ok) { const e = new Error(data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : r.statusText); e.status = r.status; throw e; }
+  return data;
+}
+
+async function loadUsers(){
+  const users = await api("GET", "/api/demo-users");
+  $("#users").innerHTML = users.map(u => `<button data-u="${esc(u)}">${esc(u)}<small>${esc(ROLES[u]||"")}</small></button>`).join("");
+  $("#revokeUser").innerHTML = users.filter(u => u!=="admin").map(u => `<option>${esc(u)}</option>`).join("");
+  $("#users").onclick = async e => {
+    const b = e.target.closest("button"); if (!b) return;
+    try { await api("POST", "/api/login", {username: b.dataset.u}); log(`đăng nhập ${b.dataset.u}`, "ok"); await refresh(); }
+    catch (err) { log(`đăng nhập ${b.dataset.u} thất bại: ${err.message}`, "bad"); }
+  };
+}
+
+async function refresh(){
+  try { ME = await api("GET", "/api/me"); } catch { ME = null; }
+  $("#whoami").textContent = ME ? `${ME.user} · ${ME.role}` : "chưa đăng nhập";
+  $("#btnLogout").classList.toggle("hidden", !ME);
+  $("#statusCard").classList.toggle("hidden", !ME);
+  $("#ownerCard").classList.toggle("hidden", !(ME && ME.role === "owner"));
+  $("#adminCard").classList.toggle("hidden", !(ME && ME.role === "admin"));
+  if (ME) {
+    const k = ME.key;
+    const stale = k && k.epoch !== ME.current_epoch;
+    $("#status").innerHTML = !k ? `<div class="banner warn">Chưa có khóa. Epoch hiện tại: ${ME.current_epoch}</div>` :
+      `<div>Epoch của khóa: <b>${k.epoch}</b> · epoch hiện tại: <b>${ME.current_epoch}</b></div>
+       ${stale ? `<div class="banner warn">Khóa thuộc epoch cũ — các bản ghi đã re-wrap sẽ không mở được. Hãy lấy khóa mới.</div>` : ""}
+       <div style="margin-top:6px">${k.attributes.map(a => `<span class="chip mono">${esc(a)}</span>`).join("")}</div>`;
+  }
+  await loadRecords();
+}
+
+async function loadRecords(){
+  if (!ME) { $("#records").innerHTML = `<tr><td colspan="5">Hãy đăng nhập.</td></tr>`; return; }
+  try {
+    const rows = await api("GET", "/api/records");
+    $("#records").innerHTML = rows.length ? rows.map(r => `<tr>
+      <td class="mono">${esc(r.record_id)}</td><td>v${r.version} / cv${r.content_version}</td>
+      <td>${esc(r.policy_ref?.epoch ?? "")}</td><td class="mono">${esc(r.policy_ref?.src ?? "")}</td>
+      <td class="row"><button data-read="${esc(r.record_id)}">Đọc</button>
+      ${ME.role==="owner" ? `<button data-edit="${esc(r.record_id)}" data-src="${esc(r.policy_ref?.src ?? "")}">Sửa</button><button class="danger" data-del="${esc(r.record_id)}">Xóa</button>` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="5">Chưa có bản ghi.</td></tr>`;
+  } catch (e) {
+    $("#records").innerHTML = `<tr><td colspan="5"><div class="banner bad">${esc(e.message)}</div></td></tr>`;
+  }
+}
+
+$("#records").onclick = async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.dataset.read) return readRecord(b.dataset.read);
+  if (b.dataset.edit) { $("#fId").value = b.dataset.edit; $("#fPolicy").value = b.dataset.src; $("#fText").focus(); return; }
+  if (b.dataset.del && confirm(`Xóa ${b.dataset.del}?`)) {
+    try { await api("DELETE", `/api/records/${encodeURIComponent(b.dataset.del)}`); log(`xóa ${b.dataset.del}`, "ok"); loadRecords(); }
+    catch (err) { log(`xóa thất bại: ${err.message}`, "bad"); }
+  }
+};
+
+async function readRecord(id){
+  try {
+    const r = await api("GET", `/api/records/${encodeURIComponent(id)}`);
+    const banner = r.status === "ok" ? `<div class="banner ok"><b>Giải mã thành công</b><br>${esc(r.plaintext)}</div>`
+      : r.status === "denied" ? `<div class="banner bad"><b>TỪ CHỐI (CP-ABE)</b><br>${esc(r.reason)}</div>`
+      : `<div class="banner warn"><b>${r.status === "no_key" ? "Chưa có khóa" : "LỖI TOÀN VẸN"}</b><br>${esc(r.reason)}</div>`;
+    $("#reader").innerHTML = `<div><b>${esc(id)}</b> · v${r.record.version} / cv${r.record.content_version} · backend ${esc(r.record.abe_backend)}</div>
+      <div class="mono" style="margin-top:4px">policy: ${esc(r.record.policy_abe)}</div>${banner}
+      <details><summary>EncryptedRecord thô (APP trả về đúng như thế này)</summary><pre>${esc(JSON.stringify(r.record, null, 2))}</pre></details>`;
+    log(`${ME.user} đọc ${id}: ${r.status}`, r.status === "ok" ? "ok" : "bad");
+  } catch (e) {
+    $("#reader").innerHTML = `<div class="banner bad"><b>APP từ chối (HTTP ${e.status})</b><br>${esc(e.message)}</div>`;
+    log(`${ME?.user} đọc ${id}: HTTP ${e.status} ${e.message}`, "bad");
+  }
+}
+
+async function loadCloud(){
+  try {
+    const rows = await api("GET", "/api/cloud-view");
+    $("#cloud").innerHTML = rows.length ? `<table><thead><tr><th>record_id</th><th>version</th><th>policy_abe</th><th>ciphertext</th></tr></thead><tbody>${
+      rows.map(r => `<tr><td>${esc(r.record_id)}</td><td>v${r.version}/cv${r.content_version}</td><td>${esc(r.policy_abe)}</td><td>${esc(r.ciphertext.slice(0,48))}…</td></tr>`).join("")
+    }</tbody></table><details><summary>JSON đầy đủ</summary><pre>${esc(JSON.stringify(rows, null, 2))}</pre></details>` : "Chưa có bản ghi.";
+  } catch (e) { $("#cloud").innerHTML = `<div class="banner bad">${esc(e.message)}</div>`; }
+}
+
+$("#btnFetch").onclick = async () => {
+  try { const k = await api("POST", "/api/fetch-key"); log(`${ME.user} nhận khóa epoch ${k.epoch}`, "ok"); refresh(); }
+  catch (e) { log(`${ME.user} lấy khóa thất bại: ${e.message}`, "bad"); }
+};
+$("#btnLogout").onclick = async () => { await api("POST", "/api/logout"); log("đăng xuất"); refresh(); };
+$("#btnReload").onclick = loadRecords;
+$("#btnCloud").onclick = loadCloud;
+$("#fPreset").onchange = e => { $("#fPolicy").value = e.target.value; };
+$("#btnPut").onclick = async () => {
+  const id = $("#fId").value.trim();
+  try { const r = await api("PUT", `/api/records/${encodeURIComponent(id)}`, {policy: $("#fPolicy").value, text: $("#fText").value});
+    log(`${r.created ? "tạo" : "cập nhật"} ${id} v${r.version}/cv${r.content_version}`, "ok"); loadRecords(); }
+  catch (e) { log(`lưu ${id} thất bại: ${e.message}`, "bad"); }
+};
+$("#btnPolicy").onclick = async () => {
+  const id = $("#fId").value.trim();
+  try { const r = await api("PATCH", `/api/records/${encodeURIComponent(id)}/policy`, {policy: $("#fPolicy").value});
+    log(`đổi policy ${id} → v${r.version}, ciphertext giữ nguyên: ${r.ciphertext_unchanged}`, "ok"); loadRecords(); }
+  catch (e) { log(`đổi policy thất bại: ${e.message}`, "bad"); }
+};
+$("#btnRevoke").onclick = async () => {
+  const sub = $("#revokeUser").value;
+  if (!confirm(`Thu hồi ${sub}?`)) return;
+  try { const r = await api("POST", "/api/admin/revoke", {sub}); log(`thu hồi ${sub} → epoch ${r.epoch}`, "ok"); refresh(); }
+  catch (e) { log(`thu hồi thất bại: ${e.message}`, "bad"); }
+};
+$("#btnRewrap").onclick = async () => {
+  try { const r = await api("POST", "/api/admin/rewrap"); log(`re-wrap sang epoch ${r.epoch}: ${r.rewrapped} bản ghi, bỏ qua ${r.skipped}, ${r.seconds}s`, "ok"); refresh(); }
+  catch (e) { log(`re-wrap thất bại: ${e.message}`, "bad"); }
+};
+document.querySelector(".tabs").onclick = e => {
+  const b = e.target.closest("button"); if (!b) return;
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x === b));
+  $("#tab-records").classList.toggle("hidden", b.dataset.tab !== "records");
+  $("#tab-cloud").classList.toggle("hidden", b.dataset.tab !== "cloud");
+  if (b.dataset.tab === "cloud") loadCloud();
+};
+
+loadUsers().then(refresh);
+</script>
+</body>
+</html>

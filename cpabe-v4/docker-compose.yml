@@ -1,0 +1,123 @@
+# PoC CP-ABE v4 — 5 service + client.
+#   vùng tin cậy (network trusted): auth, kgc, keyvault, app, client
+#   vùng cloud   (network cloud):   outsource-db, app (app nối cả hai)
+# Bí mật demo bên dưới CHỈ dùng cho PoC; đổi qua file .env khi chạy thật.
+
+x-py-build: &py-build
+  context: .
+  dockerfile: docker/charm.Dockerfile
+
+x-env: &env
+  SERVICE_TOKEN: ${SERVICE_TOKEN:-poc-service-token-change-me}
+  AUTH_URL: http://auth:8000
+  KGC_URL: http://kgc:8000
+  APP_URL: http://app:8000
+  KEYVAULT_URL: http://keyvault:8000
+
+services:
+  outsource-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cloud
+      POSTGRES_USER: cloud
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cloudpass}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./docker/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks: [cloud]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloud -d cloud"]
+      interval: 3s
+      retries: 20
+
+  auth:
+    build: *py-build
+    image: cpabe-v4/auth:dev
+    command: ["uvicorn", "cpabe.services.auth:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *env
+    volumes:
+      - auth-data:/data
+      - ./config/users.json:/config/users.json:ro
+    networks: [trusted]
+    ports: ["8002:8000"]
+
+  kgc:
+    build: *py-build
+    image: cpabe-v4/kgc:dev
+    command: ["uvicorn", "cpabe.services.kgc:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *env
+      KGC_SEAL_KEY: ${KGC_SEAL_KEY:-000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f}
+    volumes: [kgc-data:/data]
+    networks: [trusted]
+    ports: ["8001:8000"]
+    depends_on: [auth]
+
+  keyvault:
+    build: *py-build
+    image: cpabe-v4/keyvault:dev
+    command: ["uvicorn", "cpabe.services.keyvault:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment: *env
+    volumes: [kv-data:/data]
+    networks: [trusted]
+    depends_on: [auth]
+
+  app:
+    build: *py-build
+    image: cpabe-v4/app:dev
+    command: ["uvicorn", "cpabe.services.app:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql://cloud:${DB_PASSWORD:-cloudpass}@outsource-db:5432/cloud
+      REVOCATION_TTL: "2"
+    networks: [trusted, cloud]
+    ports: ["8000:8000"]
+    depends_on:
+      outsource-db: { condition: service_healthy }
+      auth: { condition: service_started }
+      kgc: { condition: service_started }
+
+  client:
+    build: *py-build
+    image: cpabe-v4/client:dev
+    entrypoint: ["python", "-m", "cpabe.client.cli"]
+    environment:
+      <<: *env
+      CLIENT_HOME: /data
+    volumes: [client-data:/data]
+    networks: [trusted]
+    profiles: [tools]
+
+  webui:
+    build: *py-build
+    image: cpabe-v4/webui:dev
+    command: ["uvicorn", "cpabe.webui.server:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      <<: *env
+      CLIENT_HOME: /data
+      # Mật khẩu demo để có nút đăng nhập nhanh (CHỈ dùng cho PoC)
+      DEMO_USERS: '{"alice":"alice123","bob":"bob123","carol":"carol123","dave":"dave123","erin":"erin123","admin":"admin123"}'
+    volumes: [webui-data:/data]
+    networks: [trusted]
+    ports: ["8080:8000"]
+    depends_on: [app, kgc, keyvault, auth]
+
+  crypto-test:
+    build: *py-build
+    image: cpabe-v4/charm:dev
+    working_dir: /app
+    volumes: [".:/app"]
+    command: ["python", "-m", "pytest", "-q", "tests"]
+    profiles: [tools]
+
+networks:
+  trusted: {}
+  cloud: {}
+
+volumes:
+  db-data: {}
+  auth-data: {}
+  kgc-data: {}
+  kv-data: {}
+  client-data: {}
+  webui-data: {}

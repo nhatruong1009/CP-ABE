@@ -178,8 +178,15 @@ func (s *Session) Write(docID string, version int, readPID, writePID string, p s
 	t.end(st)
 
 	// 4. Ký.
-	st = t.begin("Ký phiên bản bằng Write Key", "app · Ed25519",
+	signTitle := "Ký phiên bản bằng Write Key"
+	if forge {
+		signTitle = "Ký phiên bản bằng KHÓA GIẢ (không phải Write Key)"
+	}
+	st = t.begin(signTitle, "app · Ed25519",
 		"Thông điệp ký = SHA-256(doc_id, version, read/write policy, write_gen, nonce, ciphertext).")
+	if forge {
+		st.Status = "fail"
+	}
 	st.add("Thông điệp được ký", hx(v.SignedBytes()), true)
 	if v.Signature, err = shared.Sign(wpriv, v.SignedBytes()); err != nil {
 		return fail(st, err)

@@ -28,7 +28,17 @@ Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầ
 - Phần chi tiết không còn che bớt: hiện đầy đủ hex của private key, DEK, bản mã, chữ ký, `abe_wrapped_priv`. Giá trị dài nằm trong ô cuộn.
 - Template dùng chung `steps` trong `layout.html`.
 
-**Trạng thái:** chưa build lại.
+**Kiểm thử** (`docker compose up -d --build app`, giữ dữ liệu). Tất cả **đạt**:
+- `/glossary` trả 200.
+- Dũng thấy nút Sửa ở cả 4 tài liệu.
+- Dũng mở Sửa Q3: bước đối chiếu thất bại, kết luận "KHÔNG được sửa", nút lưu bị khóa, có nút ghi trái phép.
+- An mở Sửa Q3: 7 bước đạt, hiện đầy đủ private Write Key (128 ký tự hex).
+- An lưu v2, v3: trang tài liệu hiện quy trình ghi (DEK, plaintext JSON, nonce, ciphertext, wrapped_dek, chữ ký, phản hồi 201). Quy trình chỉ hiện 1 lần.
+- Dũng ghi trái phép: quy trình ghi kết thúc với 403 Forbidden.
+
+**Thay đổi dữ liệu do kiểm thử:** Báo cáo Q3 có thêm v2, v3 (do An).
+
+**Sửa sau kiểm thử** (chưa build): khi ghi trái phép, bước ký đổi tiêu đề thành "Ký bằng KHÓA GIẢ" và đánh dấu thất bại.
 
 ## [2026-10-11] Hiển thị chi tiết quy trình giải mã ("bản thô")
 

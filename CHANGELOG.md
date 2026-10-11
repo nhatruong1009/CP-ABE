@@ -3,6 +3,29 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] PoC bằng Go: authority, app, cloud-api trên Docker
+
+**Quyết định:** chọn Go cho toàn bộ code (thay vì phương án Python + Charm-crypto).
+
+**Thêm**
+- `shared/`: wrapper CP-ABE (CIRCL tkn20), Policy Key X25519 + DEK AES-256-GCM, Write Key Ed25519, kiểu dữ liệu, client HTTP.
+- `authority/`:
+  - Setup, KeyGen, thuộc tính có version, biên dịch chính sách logic thành chính sách có version
+  - Policy Key theo thế hệ, ký bằng khóa authority để cloud không tráo được
+  - Cấp/thu hồi thuộc tính, chế độ Lazy/Eager
+  - Seed 5 user, 4 tài liệu
+- `cloudapi/`: REST + PostgreSQL, kiểm chữ ký ghi theo Write Key thế hệ hiện hành, optimistic locking (409), chặn đổi chính sách khi sửa, endpoint mô phỏng cloud độc hại.
+- `app/`: Web UI gồm chọn vai, kho tài liệu, xem/lịch sử, tạo/sửa, thử ghi trái phép, quản trị thuộc tính, góc nhìn cloud. Keystore giữ cả khóa cũ để demo.
+- `Dockerfile`, `docker-compose.yml` (2 network `trusted_net` / `cloud_net`), `README.md` kèm kịch bản demo A–J.
+
+**Sửa**
+- `docs/01-de-xuat-cai-tien.md`:
+  - authority lưu bằng file JSON (thay SQLite)
+  - không cho đổi chính sách khi sửa (lý do bảo mật, ghi vào §11)
+  - cập nhật cấu trúc thư mục
+
+**Trạng thái:** chưa build, chưa chạy thử.
+
 ## [2026-10-11] Rà soát đề xuất và đề xuất cải tiến
 
 **Thêm**

@@ -1,0 +1,65 @@
+# Kho tài liệu CP-ABE: 3 container trong vùng tin cậy và vùng cloud, cộng DB và Adminer.
+#   http://localhost:8080  app (Web UI)
+#   http://localhost:8090  Adminer: góc nhìn DBA của cloud (server: cloud-db, user/pass/db: cloud)
+# Xóa sạch để chạy lại từ đầu: docker compose down -v
+
+x-image: &image
+  image: cpabe-demo:latest
+  build: .
+
+services:
+  # ---------- VÙNG TIN CẬY ----------
+  authority:
+    <<: *image
+    command: ["authority"]
+    environment:
+      CLOUD_URL: http://cloud-api:8082
+      CLOUD_ADMIN_TOKEN: ${CLOUD_ADMIN_TOKEN:-demo-authority-token}
+      STATE_FILE: /data/state.json
+    volumes: [authority-data:/data]
+    networks: [trusted_net, cloud_net]
+    depends_on: [cloud-api]
+
+  app:
+    <<: *image
+    command: ["app"]
+    environment:
+      AUTHORITY_URL: http://authority:8081
+      CLOUD_URL: http://cloud-api:8082
+      KEYSTORE_DIR: /keystore
+      ADMINER_URL: http://localhost:8090/?pgsql=cloud-db&username=cloud&db=cloud
+    volumes: [keystore:/keystore]
+    networks: [trusted_net, cloud_net]
+    ports: ["8080:8080"]
+    depends_on: [authority, cloud-api]
+
+  # ---------- VÙNG KHÔNG TIN CẬY (cloud) ----------
+  # cloud-api chỉ nằm trong cloud_net nên KHÔNG gọi được authority.
+  cloud-api:
+    <<: *image
+    command: ["cloudapi"]
+    environment:
+      DATABASE_URL: postgres://cloud:cloud@cloud-db:5432/cloud?sslmode=disable
+      CLOUD_ADMIN_TOKEN: ${CLOUD_ADMIN_TOKEN:-demo-authority-token}
+    networks: [cloud_net]
+    depends_on: [cloud-db]
+
+  cloud-db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: cloud, POSTGRES_PASSWORD: cloud, POSTGRES_DB: cloud }
+    volumes: [cloud-data:/var/lib/postgresql/data]
+    networks: [cloud_net]
+
+  cloud-admin:
+    image: adminer:4
+    networks: [cloud_net]
+    ports: ["8090:8080"]
+
+networks:
+  trusted_net: {}
+  cloud_net: {}
+
+volumes:
+  authority-data: {}
+  keystore: {}
+  cloud-data: {}

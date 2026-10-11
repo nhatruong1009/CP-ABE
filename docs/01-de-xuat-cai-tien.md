@@ -95,7 +95,7 @@ flowchart LR
     APP["app<br/>Client App + Web UI<br/>Encrypt / Decrypt / Ký"]
     KS[("keystore<br/>khóa ABE của từng user")]
     KA["authority<br/>Key Authority<br/>Setup · KeyGen · Policy Registry · Thu hồi"]
-    KADB[("authority-db (SQLite)<br/>MSK · users · thuộc tính+version<br/>khóa riêng của Policy")]
+    KADB[("state.json (volume authority-data)<br/>MSK · users · thuộc tính+version<br/>khóa riêng của Policy")]
   end
   subgraph UNTRUSTED["VÙNG KHÔNG TIN CẬY - Cloud (docker network: cloud_net)"]
     API["cloud-api<br/>Storage Gateway<br/>KHÔNG giữ khóa<br/>chỉ kiểm chữ ký ghi"]
@@ -118,7 +118,7 @@ flowchart LR
 
 | Container | Vùng | Giữ gì | Làm gì | Công nghệ gợi ý |
 |---|---|---|---|---|
-| `authority` | Tin cậy | Master Secret Key, danh sách thuộc tính + version, gán thuộc tính cho user, khóa riêng của các Policy Key | Setup, KeyGen, đăng ký policy, cấp/thu hồi thuộc tính, mã hóa lại (eager) | Go + CIRCL, SQLite |
+| `authority` | Tin cậy | Master Secret Key, danh sách thuộc tính + version, gán thuộc tính cho user, khóa riêng của các Policy Key | Setup, KeyGen, đăng ký policy, cấp/thu hồi thuộc tính, mã hóa lại (eager) | Go + CIRCL, file JSON trên volume |
 | `app` | Tin cậy | Khóa ABE của user (mô phỏng "thiết bị của user") | Web UI. Mã hóa/giải mã/ký **tại chỗ**. Không bao giờ gửi plaintext ra cloud | Go + CIRCL, HTML template |
 | `cloud-api` | Không tin cậy | Không giữ khóa bí mật nào | REST lưu/trả ciphertext, **kiểm chữ ký trước khi nhận bản ghi**, kiểm số phiên bản | Go (chỉ cần `crypto/ed25519`) |
 | `cloud-db` | Không tin cậy | Ciphertext, Policy Key đã mã hóa, public key | Lưu trữ | PostgreSQL 16 |
@@ -336,7 +336,7 @@ Giống UC1, khác ở các điểm:
 - Luôn sinh **DEK mới** và bọc bằng Policy Key **thế hệ hiện hành**. Đây chính là bước "lazy re-encryption" tự động.
 - Gửi kèm `version = phiên bản đang xem + 1`. Nếu người khác đã sửa trước, `cloud-api` trả **409 Conflict** và UI báo "Có phiên bản mới hơn, hãy tải lại" (optimistic locking).
 - Các phiên bản cũ được giữ lại (append-only), UI có tab "Lịch sử".
-- Tùy chọn: người có quyền ghi đổi read/write policy của tài liệu. Bản ghi đổi policy phải được ký bằng Write Key **cũ**.
+- **Không cho đổi chính sách khi sửa** (cloud-api trả 400). Nếu cho đổi, người thỏa write policy *mới* có thể chiếm tài liệu. Đổi chính sách đúng cách cần chữ ký bằng Write Key **cũ**, xem §11.
 
 ### 5.4 UC4 / UC5
 
@@ -396,7 +396,9 @@ CREATE TABLE document_versions (
 
 Khi mở bằng Adminer, DBA chỉ thấy BYTEA và tên chính sách. Không có tiêu đề, không có nội dung.
 
-### 6.2 `authority-db` (SQLite, vùng tin cậy)
+### 6.2 Dữ liệu của `authority` (file `/data/state.json`, vùng tin cậy)
+
+Lưu dạng JSON để dễ mở ra xem khi demo. Hệ thống thật nên dùng DB và HSM cho Master Key.
 
 | Bảng | Cột chính |
 |---|---|
@@ -463,7 +465,9 @@ Khi mở bằng Adminer, DBA chỉ thấy BYTEA và tên chính sách. Không c�
 
 ---
 
-## 8. Docker Compose (khung)
+## 8. Docker Compose
+
+> File thật: [docker-compose.yml](../docker-compose.yml). Khung dưới đây để giải thích.
 
 ```yaml
 services:
@@ -514,10 +518,12 @@ Cấu trúc thư mục đề xuất:
 ```
 CP_ABE_1/
 ├── docker-compose.yml
-├── authority/      # Go: Setup, KeyGen, policy registry, grant/revoke, eager worker, trang Admin
-├── app/            # Go: Web UI, encrypt/decrypt/sign, keystore
-├── cloud-api/      # Go: REST + kiểm chữ ký, schema.sql
-├── shared/         # Go module dùng chung: định dạng gói tin, hàm mã hóa Tầng 2–3, ký/kiểm
+├── Dockerfile      # 1 image chứa cả 3 binary
+├── go.mod          # 1 Go module: cpabe-demo
+├── authority/      # Setup, KeyGen, policy registry + biên dịch version, grant/revoke, eager rewrap
+├── app/            # Web UI (templates/), encrypt/decrypt/sign (vault.go), keystore
+├── cloudapi/       # REST + kiểm chữ ký + optimistic locking, schema tạo lúc khởi động
+├── shared/         # CP-ABE wrapper, Tầng 2–3, kiểu dữ liệu, client gọi cloud/authority
 └── docs/
 ```
 
@@ -563,6 +569,7 @@ Tham khảo để đối chiếu: Cloudflare công bố với **50 thuộc tính
 | Tìm kiếm trên dữ liệu mã hóa | Ngoài trọng tâm authorization |
 | Che giấu chính sách hoàn toàn | Cần lược đồ chuyên biệt; C5 là mức đủ dùng |
 | Chống rollback toàn phần | Cần cơ chế ngoài (log công khai/blockchain). Chỉ ghi nhận |
+| Đổi chính sách của tài liệu đã có | Cần ký bằng Write Key cũ và cập nhật kiểm tra ở cloud. PoC chỉ cho đặt chính sách lúc tạo |
 
 ---
 

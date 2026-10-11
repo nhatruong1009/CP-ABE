@@ -1,0 +1,67 @@
+{{define "content"}}
+{{with .Data}}
+<h1>Quản trị thuộc tính (Key Authority)</h1>
+<p class="hint">Cấp hoặc thu hồi <b>thuộc tính</b> của người dùng (không thu hồi tài khoản). Mỗi thao tác do <code>authority</code> thực hiện.
+  Khi thu hồi: version thuộc tính tăng, khóa của người liên quan được cấp lại, các chính sách có thuộc tính đó sang thế hệ Policy Key mới.</p>
+
+<div class="card">
+  <b>Chế độ xử lý tài liệu cũ khi thu hồi:</b>
+  <select id="mode">
+    <option value="lazy">Lazy: chỉ bọc lại khi có người sửa (rẻ)</option>
+    <option value="eager">Eager: bọc lại DEK mọi phiên bản ngay, hủy thế hệ cũ</option>
+  </select>
+</div>
+
+<div class="scroll">
+<table>
+  <tr><th>Người dùng</th>
+    {{range .Attributes}}<th title="{{.Desc}}">{{.Name}}<br><span class="tag">v{{.Version}}</span></th>{{end}}
+    <th>Epoch khóa</th></tr>
+  {{range $u := .Users}}
+  <tr>
+    <td><b>{{$u.Name}}</b></td>
+    {{range $.Data.Attributes}}
+    <td style="text-align:center">
+      {{if has $u.Attrs .Name}}
+        <form method="post" action="/admin/revoke" class="revoke">
+          <input type="hidden" name="user" value="{{$u.ID}}"><input type="hidden" name="attr" value="{{.Name}}">
+          <input type="hidden" name="mode" value="lazy">
+          <span class="tag ok">✔</span><br><button class="small danger" title="Thu hồi {{.Name}} của {{$u.Name}}">Thu hồi</button>
+        </form>
+      {{else}}
+        <form method="post" action="/admin/grant">
+          <input type="hidden" name="user" value="{{$u.ID}}"><input type="hidden" name="attr" value="{{.Name}}">
+          <button class="small light" title="Cấp {{.Name}} cho {{$u.Name}}">+ Cấp</button>
+        </form>
+      {{end}}
+    </td>
+    {{end}}
+    <td>{{$u.KeyEpoch}}</td>
+  </tr>
+  {{end}}
+</table>
+</div>
+
+<h2>Chính sách đã đăng ký</h2>
+<div class="scroll">
+<table>
+  <tr><th>ID</th><th>Loại</th><th>Chính sách logic</th><th>Thế hệ hiện hành</th><th>Chính sách thật (đã gắn version)</th></tr>
+  {{range .Policies}}
+  <tr><td><code>{{.ID}}</code></td><td>{{if eq .Kind "read"}}Đọc{{else}}Ghi{{end}}</td><td><code>{{.Logical}}</code></td>
+    <td>{{.CurrentGen}}</td><td><code>{{.Compiled}}</code></td></tr>
+  {{end}}
+</table>
+</div>
+
+<h2>Nhật ký</h2>
+<table>
+  <tr><th>Thời điểm</th><th>Hành động</th><th>Chi tiết</th></tr>
+  {{range .Audit}}<tr><td style="white-space:nowrap">{{time .Time}}</td><td>{{.Action}}</td><td>{{.Detail}}</td></tr>{{end}}
+</table>
+{{end}}
+<script>
+  document.querySelectorAll('form.revoke').forEach(f => f.addEventListener('submit', () => {
+    f.querySelector('[name=mode]').value = document.getElementById('mode').value;
+  }));
+</script>
+{{end}}

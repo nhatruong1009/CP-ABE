@@ -1,0 +1,44 @@
+{{define "content"}}
+{{with .Data}}
+<h1>Góc nhìn Cloud (DBA tò mò)</h1>
+<p class="hint">Đây là toàn bộ những gì cloud lưu, lấy trực tiếp từ <code>cloud-api</code>. Có thể mở DB thật bằng
+  <a href="{{$.Adminer}}" target="_blank">Adminer</a> (server <code>cloud-db</code>, user/pass/db <code>cloud</code>).
+  Không có tiêu đề, không có nội dung, không có khóa bí mật.</p>
+
+<h2>Bảng <code>document_versions</code></h2>
+<div class="scroll">
+<table>
+  <tr><th>doc_id</th><th>v</th><th>read policy · gen</th><th>wrapped_dek</th><th>ciphertext</th><th>write policy · gen</th><th>signature</th><th>Mô phỏng cloud độc hại</th></tr>
+  {{range .Versions}}
+  <tr>
+    <td><code>{{short .DocID}}</code></td><td>{{.Version}}</td>
+    <td><code>{{.ReadPolicyID}}</code> · {{.ReadGen}}</td>
+    <td><code>{{hexp .WrappedDEK 12}}</code></td>
+    <td><code>{{hexp .Ciphertext 16}}</code><br><small class="muted">{{len .Ciphertext}} byte</small></td>
+    <td><code>{{.WritePolicyID}}</code> · {{.WriteGen}}</td>
+    <td><code>{{hexp .Signature 10}}</code></td>
+    <td><form method="post" action="/cloud/tamper"><input type="hidden" name="doc" value="{{.DocID}}">
+      <input type="hidden" name="version" value="{{.Version}}"><button class="small danger">Sửa 1 bit</button></form></td>
+  </tr>
+  {{end}}
+</table>
+</div>
+
+<h2>Bảng <code>policies</code> + <code>policy_keys</code></h2>
+<p class="hint">Chính sách logic đang ở dạng rõ (chưa bật C5: ẩn tên thuộc tính). Private key của mỗi thế hệ chỉ có ở dạng bản mã CP-ABE.</p>
+<div class="scroll">
+<table>
+  <tr><th>policy_id</th><th>Loại</th><th>Chính sách</th><th>Thế hệ</th><th>Chính sách thật của bản mã</th><th>public_key</th><th>abe_wrapped_priv</th></tr>
+  {{range $p := .Policies}}{{range .Keys}}
+  <tr>
+    <td><code>{{$p.PolicyID}}</code></td><td>{{$p.Kind}}</td><td><code>{{$p.Logical}}</code></td>
+    <td>{{.Gen}}{{if eq .Gen $p.CurrentGen}} <span class="tag ok">hiện hành</span>{{end}}</td>
+    <td><code>{{.Compiled}}</code></td>
+    <td><code>{{hexp .PublicKey 8}}</code></td>
+    <td>{{if .ABEWrappedPriv}}<code>{{hexp .ABEWrappedPriv 8}}</code> <small class="muted">{{len .ABEWrappedPriv}} byte</small>{{else}}<span class="tag bad">đã hủy</span>{{end}}</td>
+  </tr>
+  {{end}}{{end}}
+</table>
+</div>
+{{end}}
+{{end}}

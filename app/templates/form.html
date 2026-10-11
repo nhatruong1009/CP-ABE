@@ -1,0 +1,39 @@
+{{define "content"}}
+{{with .Data}}
+<p><a href="{{if .IsNew}}/{{else}}/doc/{{.DocID}}{{end}}">← Quay lại</a></p>
+<h1>{{if .IsNew}}Tạo tài liệu mới{{else}}Sửa tài liệu (tạo phiên bản {{.BaseVersion}}+1){{end}}</h1>
+<form method="post" action="{{if .IsNew}}/new{{else}}/doc/{{.DocID}}/edit{{end}}" class="card">
+  {{if not .IsNew}}<input type="hidden" name="base_version" value="{{.BaseVersion}}">{{end}}
+  {{if and (not .IsNew) (not .CanRead)}}
+    <div class="flash warn">Bạn có quyền GHI nhưng không có quyền ĐỌC tài liệu này (ghi mà không đọc). Nội dung mới sẽ thay thế nội dung cũ.</div>
+  {{end}}
+  <label>Tiêu đề</label>
+  <input type="text" name="title" value="{{.Title}}" required>
+  <label>Nội dung</label>
+  <textarea name="body">{{.Body}}</textarea>
+
+  {{if .IsNew}}
+  <div class="row">
+    <div>
+      <label>Read policy: ai được ĐỌC</label>
+      <input type="text" name="read" value="{{.ReadLogical}}" list="readopts" required>
+      <datalist id="readopts">{{range .ReadOptions}}<option value="{{.}}">{{end}}</datalist>
+    </div>
+    <div>
+      <label>Write policy: ai được SỬA</label>
+      <input type="text" name="write" value="{{.WriteLogical}}" list="writeopts" required>
+      <datalist id="writeopts">{{range .WriteOptions}}<option value="{{.}}">{{end}}</datalist>
+    </div>
+  </div>
+  <p class="muted">Cú pháp: tên thuộc tính, <code>and</code>, <code>or</code>, ngoặc đơn. Thuộc tính:
+    {{range .Attributes}}<span class="tag" title="{{.Desc}}">{{.Name}}</span> {{end}}</p>
+  {{else}}
+  <p>Chính sách (giữ nguyên khi sửa): đọc <code>{{.ReadLogical}}</code> · ghi <code>{{.WriteLogical}}</code></p>
+  {{end}}
+
+  <p class="muted">Khi lưu, app sẽ: sinh DEK mới → mã hóa AES-GCM → bọc DEK bằng Policy Key đọc (thế hệ hiện hành)
+    → mở Write Key bằng CP-ABE → ký → gửi bản mã lên cloud.</p>
+  <button>🔐 Mã hóa &amp; lưu lên cloud</button>
+</form>
+{{end}}
+{{end}}

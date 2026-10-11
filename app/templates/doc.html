@@ -1,0 +1,54 @@
+{{define "content"}}
+{{with .Data}}
+{{$l := .Latest}}
+<p><a href="/">← Kho tài liệu</a></p>
+<div class="card">
+  {{if $l.OK}}
+    <h1>🔓 {{$l.Payload.Title}}</h1>
+    <p class="muted">Phiên bản {{$l.V.Version}} · {{time $l.V.CreatedAt}} · người ghi: {{$l.Payload.Author}}
+      · {{if $l.SigOK}}<span class="tag ok">✔ chữ ký ghi hợp lệ</span>{{else}}<span class="tag bad">✖ chữ ký ghi KHÔNG hợp lệ</span>{{end}}</p>
+    <div class="content">{{$l.Payload.Body}}</div>
+  {{else}}
+    <div class="locked">
+      <div style="font-size:42px">🔒</div>
+      <h1>{{$l.Msg}}</h1>
+      {{if eq $l.Status "noaccess"}}<p>Cần thỏa chính sách: <code>{{$l.ReadLogical}}</code></p>
+      <p class="muted">Bản mã CP-ABE của Policy Key thế hệ {{$l.V.ReadGen}} không mở được bằng khóa hiện tại.</p>{{end}}
+      {{if eq $l.Status "tampered"}}<p>AES-GCM phát hiện bản mã trên cloud đã bị thay đổi.
+        {{if not $l.SigOK}}Chữ ký ghi cũng không còn khớp.{{end}}</p>{{end}}
+    </div>
+  {{end}}
+</div>
+
+<div class="card">
+  <b>Chính sách</b>: đọc <code>{{$l.ReadLogical}}</code> · ghi <code>{{$l.WriteLogical}}</code>
+  <div style="margin-top:10px">
+  {{if $l.CanWrite}}
+    <a class="btn" href="/doc/{{$l.V.DocID}}/edit">✏ Sửa (tạo phiên bản mới)</a>
+  {{else}}
+    <form method="post" action="/doc/{{$l.V.DocID}}/forge" style="display:inline">
+      <button class="danger">⚠ Thử ghi trái phép (ký bằng khóa tự tạo)</button>
+    </form>
+    <span class="muted">{{$.Me.Name}} không thỏa write policy. Nút này mô phỏng kẻ ghi trái phép, cloud phải từ chối.</span>
+  {{end}}
+  </div>
+</div>
+
+<h2>Lịch sử phiên bản</h2>
+<div class="scroll">
+<table>
+  <tr><th>Phiên bản</th><th>Thời điểm</th><th>Tiêu đề</th><th>Người ghi</th><th>Policy Key đọc</th><th>Write Key</th><th>Chữ ký</th><th>Trạng thái</th></tr>
+  {{range .History}}
+  <tr>
+    <td>v{{.V.Version}}</td><td>{{time .V.CreatedAt}}</td>
+    <td>{{if .OK}}{{.Payload.Title}}{{else}}<span class="muted">🔒</span>{{end}}</td>
+    <td>{{if .OK}}{{.Payload.Author}}{{end}}</td>
+    <td>thế hệ {{.V.ReadGen}}</td><td>thế hệ {{.V.WriteGen}}</td>
+    <td>{{if .SigOK}}<span class="tag ok">✔</span>{{else}}<span class="tag bad">✖</span>{{end}}</td>
+    <td>{{if .OK}}<span class="tag ok">đọc được</span>{{else}}<span class="tag bad">{{.Msg}}</span>{{end}}</td>
+  </tr>
+  {{end}}
+</table>
+</div>
+{{end}}
+{{end}}

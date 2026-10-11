@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}} · Kho tài liệu CP-ABE</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --ink:#1d2433; --muted:#6b7385; --line:#e3e6ec;
+          --brand:#1f3a68; --ok:#1f7a3f; --okbg:#e6f4ea; --bad:#a62b2b; --badbg:#fbe9e9; --warn:#8a5a00; --warnbg:#fff4d6; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--brand); color:#fff; padding:10px 20px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+  header .brand { font-weight:700; }
+  header nav a { color:#cfd9ee; text-decoration:none; margin-right:14px; }
+  header nav a.on { color:#fff; border-bottom:2px solid #f2c14e; }
+  header form { margin-left:auto; display:flex; gap:8px; align-items:center; }
+  header select { padding:4px 6px; border-radius:4px; border:0; }
+  .me { background:#fff; border-bottom:1px solid var(--line); padding:8px 20px; display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  main { padding:20px; max-width:1200px; margin:0 auto; }
+  h1 { font-size:22px; margin:4px 0 12px; } h2 { font-size:17px; margin:22px 0 8px; }
+  .hint { color:var(--muted); margin:0 0 14px; }
+  table { width:100%; border-collapse:collapse; background:var(--card); border:1px solid var(--line); }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { background:#eef1f6; font-size:13px; }
+  code { font-size:12.5px; background:#eef1f6; padding:1px 5px; border-radius:3px; word-break:break-all; }
+  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:10px; background:#eef1f6; white-space:nowrap; }
+  .tag.ok { background:var(--okbg); color:var(--ok); } .tag.bad { background:var(--badbg); color:var(--bad); }
+  .tag.warn { background:var(--warnbg); color:var(--warn); }
+  .flash { padding:10px 14px; border-radius:6px; margin:0 0 14px; }
+  .flash.ok { background:var(--okbg); color:var(--ok); } .flash.err { background:var(--badbg); color:var(--bad); }
+  .flash.warn { background:var(--warnbg); color:var(--warn); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:16px; }
+  .content { white-space:pre-wrap; font-size:16px; }
+  .locked { text-align:center; padding:30px; color:var(--bad); }
+  .muted { color:var(--muted); }
+  a { color:#2456a6; }
+  button, .btn { background:var(--brand); color:#fff; border:0; padding:6px 12px; border-radius:5px; cursor:pointer; font-size:14px; text-decoration:none; display:inline-block; }
+  button.danger { background:var(--bad); } button.light { background:#eef1f6; color:var(--ink); }
+  button.small { padding:2px 8px; font-size:12px; }
+  input[type=text], textarea { width:100%; padding:8px; border:1px solid var(--line); border-radius:5px; font:inherit; }
+  textarea { min-height:180px; }
+  label { font-weight:600; display:block; margin:12px 0 4px; }
+  .row { display:flex; gap:16px; flex-wrap:wrap; } .row > * { flex:1; min-width:260px; }
+  .scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">🔐 Kho tài liệu CP-ABE · Công ty ABC</span>
+  <nav>
+    <a href="/" class="{{if eq .Nav "index"}}on{{end}}">Kho tài liệu</a>
+    <a href="/new" class="{{if eq .Nav "new"}}on{{end}}">Tạo mới</a>
+    <a href="/admin" class="{{if eq .Nav "admin"}}on{{end}}">Quản trị thuộc tính</a>
+    <a href="/cloud" class="{{if eq .Nav "cloud"}}on{{end}}">Góc nhìn Cloud</a>
+  </nav>
+  <form method="post" action="/as" id="switch">
+    <input type="hidden" name="back" value="">
+    <input type="hidden" name="user_changed" value="0">
+    <span>Đang đóng vai:</span>
+    <select name="user" onchange="this.form.user_changed.value=1; this.form.submit()">
+      {{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Me.UserID}}selected{{end}}>{{.Name}}</option>{{end}}
+    </select>
+    <span>Khóa:</span>
+    <select name="epoch" onchange="this.form.submit()">
+      {{range .Epochs}}<option value="{{.}}" {{if eq . $.Me.Epoch}}selected{{end}}>epoch {{.}}{{if eq . (index $.Epochs 0)}} (mới nhất){{end}}</option>{{end}}
+    </select>
+  </form>
+</header>
+<div class="me">
+  <b>{{.Me.Name}}</b> đang giữ khóa ABE với thuộc tính:
+  {{range $k, $v := .Me.Attrs}}<span class="tag">{{$k}}: {{$v}}</span>{{else}}<span class="muted">(không có)</span>{{end}}
+  {{if not .Me.Latest}}<span class="tag warn">⚠ đang dùng khóa CŨ (epoch {{.Me.Epoch}}), mô phỏng người dùng giữ lại khóa sau khi bị thu hồi</span>{{end}}
+</div>
+<main>
+  {{if .Flash}}<div class="flash ok">{{.Flash}}</div>{{end}}
+  {{if .Error}}<div class="flash err">{{.Error}}</div>{{end}}
+  {{template "content" .}}
+</main>
+<script>document.querySelector('#switch [name=back]').value = location.pathname;</script>
+</body>
+</html>

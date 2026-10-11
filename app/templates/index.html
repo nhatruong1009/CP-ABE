@@ -1,0 +1,22 @@
+{{define "content"}}
+<h1>Kho tài liệu</h1>
+<p class="hint">Mỗi dòng là một tài liệu đang nằm trên cloud dưới dạng bản mã. App thử giải mã <b>ngay tại máy</b> bằng khóa ABE của <b>{{.Me.Name}}</b>.</p>
+<div class="scroll">
+<table>
+  <tr><th>Tài liệu</th><th>Ai được ĐỌC</th><th>Ai được SỬA</th><th>Phiên bản</th><th>Chữ ký</th><th></th></tr>
+  {{range .Data}}
+  <tr>
+    <td>
+      {{if .OK}}🔓 <a href="/doc/{{.V.DocID}}"><b>{{.Payload.Title}}</b></a>
+      {{else}}🔒 <a href="/doc/{{.V.DocID}}" class="muted">Tài liệu #{{short .V.DocID}}</a><br><span class="tag bad">{{.Msg}}</span>{{end}}
+    </td>
+    <td><code>{{.ReadLogical}}</code><br><small class="muted">Policy Key thế hệ {{.V.ReadGen}}{{if ne .V.ReadGen .CurReadGen}} · hiện hành {{.CurReadGen}}{{end}}</small></td>
+    <td><code>{{.WriteLogical}}</code><br>{{if .CanWrite}}<span class="tag ok">bạn được sửa</span>{{else}}<span class="tag">chỉ xem</span>{{end}}</td>
+    <td>v{{.V.Version}}</td>
+    <td>{{if .SigOK}}<span class="tag ok">✔ hợp lệ</span>{{else}}<span class="tag bad">✖ sai</span>{{end}}</td>
+    <td style="white-space:nowrap"><a href="/doc/{{.V.DocID}}">Xem</a>{{if .CanWrite}} · <a href="/doc/{{.V.DocID}}/edit">Sửa</a>{{end}}</td>
+  </tr>
+  {{else}}<tr><td colspan="6" class="muted">Chưa có tài liệu.</td></tr>{{end}}
+</table>
+</div>
+{{end}}

@@ -153,7 +153,10 @@ func (s *Session) Read(v shared.DocVersion) ReadResult {
 		res.Payload, err = shared.OpenPayload(dek, v.Nonce, v.Ciphertext, v.AAD())
 	}
 	if err != nil {
-		res.Status, res.Msg = "tampered", "Bản mã bị sửa đổi: "+err.Error()
+		res.Status, res.Msg = "tampered", "Bản mã trên cloud đã bị sửa đổi (AES-GCM không hợp lệ)"
+		if !errors.Is(err, shared.ErrIntegrity) {
+			res.Status, res.Msg = "error", "Lỗi giải mã: "+err.Error()
+		}
 		return res
 	}
 	res.Status = "ok"

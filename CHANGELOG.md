@@ -3,6 +3,31 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] Chạy thử toàn bộ hệ thống trên Docker
+
+**Kết quả kiểm thử** (dùng `curl` qua app, cookie `as=<user>`). Tất cả **đạt**:
+
+| Kịch bản | Kết quả |
+|---|---|
+| Quyền đọc/ghi ban đầu | An đọc 2/sửa 2 · Bình 1/1 · Chi 1/2 · Dũng 1/2 · Hà 3/0 (đúng bảng chính sách) |
+| D: ghi trái phép (khóa tự tạo) | Cloud trả 403 "chữ ký ghi không hợp lệ" |
+| D2: sửa khi không thỏa write policy | App chặn trước, không mở được Write Key |
+| Sửa bình thường / sửa từ phiên bản cũ | Lưu v2 / 409 Conflict |
+| C: thu hồi `dept_finance` của Bình (Lazy) | v1→v2, KeyGen lại 2 user, 3 chính sách sang thế hệ mới, khoảng 0,66 s. Bình đọc 0, An vẫn đọc 2 |
+| H: Bình dùng khóa cũ (epoch 1, `dept_finance: v1`) | Đọc 0 |
+| F: cấp `proj_alpha` cho Bình | KeyGen 1 lần, đọc được ngay tài liệu Alpha cũ |
+| I: Dũng ghi Đề xuất ngân sách | Ghi được (không đọc được), An đọc được bản của Dũng |
+| E: cloud sửa 1 bit | App báo bản mã bị sửa đổi (AES-GCM) |
+| J: thu hồi `proj_alpha` của Dũng (Eager) | Bọc lại DEK 1 phiên bản sang thế hệ mới, hủy thế hệ cũ, khoảng 0,26 s |
+| Lazy so với Eager trên cloud | Q3: v1, v2 vẫn ở thế hệ 1, v3 ở thế hệ 2 · Alpha: đã chuyển sang thế hệ 2 |
+| Các trang `/ /admin /cloud /new /doc /edit` | HTTP 200, không có panic/lỗi render trong log |
+
+**Sửa**
+- `code/docker-compose.yml`:
+  - cổng app mặc định đổi sang **8088**, vì 8080 bị container `cpabe-v4-webui-1` của project khác chiếm
+  - thêm biến `APP_PORT`, `ADMINER_PORT`
+- `code/app/vault.go`: sửa thông báo lỗi bị lặp ("Bản mã bị sửa đổi: bản mã bị sửa đổi…"). **Chưa build lại.**
+
 ## [2026-10-11] Chuyển mã nguồn vào `code/`, cố định phiên bản thư viện
 
 **Sửa**

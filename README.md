@@ -25,8 +25,8 @@ docker compose logs -f authority # chờ dòng "authority lắng nghe :8081"
 
 | URL | Thành phần |
 |---|---|
-| http://localhost:8080 | **app**: Web UI (vùng tin cậy) |
-| http://localhost:8090 | **Adminer**: góc nhìn DBA của cloud (System: PostgreSQL, server `cloud-db`, user/pass/db `cloud`) |
+| http://localhost:8088 | **app**: Web UI (vùng tin cậy). Đổi cổng: `APP_PORT=9000 docker compose up -d` |
+| http://localhost:8090 | **Adminer** (đổi bằng `ADMINER_PORT`): góc nhìn DBA của cloud (System: PostgreSQL, server `cloud-db`, user/pass/db `cloud`) |
 
 Dừng: `docker compose down`. Xóa sạch dữ liệu (Master Key, khóa, DB) để chạy lại từ đầu: `docker compose down -v`.
 

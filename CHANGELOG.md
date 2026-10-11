@@ -3,6 +3,28 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] Hiển thị chi tiết quy trình giải mã ("bản thô")
+
+**Thêm**
+- Trang tài liệu có mục **"🔍 Quy trình giải mã chi tiết"** cho mọi phiên bản (đọc được lẫn bị khóa). Gồm sơ đồ luồng và 7 bước:
+  1. Bản ghi thô trên cloud
+  2. Header chính sách + chữ ký authority
+  3. Đối chiếu từng thuộc tính / version
+  4. Tầng 1 CP-ABE
+  5. Tầng 2 X25519 → DEK
+  6. Tầng 3 AES-GCM → plaintext JSON thô
+  7. Chữ ký ghi Ed25519
+
+  Mỗi bước hiển thị nguồn dữ liệu, giá trị hex và thời gian. Các khóa bí mật chỉ hiện một phần.
+- Bảng lịch sử có link "Xem quy trình" cho từng phiên bản (`?v=N`).
+- `shared.OpenPayloadRaw`, `Session.openPrivCached` (báo private key lấy từ cache hay vừa giải mã).
+
+**Kiểm thử** (sau `docker compose down -v` + build lại):
+- An đọc Q3: 7 bước đạt.
+- Dũng đọc Q3: dừng ở bước đối chiếu thuộc tính, Tầng 2–3 "bỏ qua", chữ ký vẫn kiểm được.
+
+**Sửa sau kiểm thử** (chưa build lại): thuộc tính *không có* trong chính sách không tô đỏ nữa. Với `or`, thiếu một nhánh vẫn có thể thỏa. Chỉ version cũ mới tô đỏ.
+
 ## [2026-10-11] Chạy thử toàn bộ hệ thống trên Docker
 
 **Kết quả kiểm thử** (dùng `curl` qua app, cookie `as=<user>`). Tất cả **đạt**:

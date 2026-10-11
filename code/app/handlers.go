@@ -25,8 +25,9 @@ func (s *Server) handleIndex(c *ctx) (string, error) {
 }
 
 type docData struct {
-	Latest  ReadResult
-	History []ReadResult
+	Latest   ReadResult
+	Selected ReadResult // phiên bản đang xem quy trình giải mã (?v=N, mặc định mới nhất)
+	History  []ReadResult
 }
 
 func (s *Server) handleDoc(c *ctx) (string, error) {
@@ -42,7 +43,14 @@ func (s *Server) handleDoc(c *ctx) (string, error) {
 	for _, v := range vs {
 		d.History = append(d.History, c.sess.Read(v))
 	}
-	d.Latest = d.History[0]
+	d.Latest, d.Selected = d.History[0], d.History[0]
+	if n, err := strconv.Atoi(c.r.URL.Query().Get("v")); err == nil {
+		for _, h := range d.History {
+			if h.V.Version == n {
+				d.Selected = h
+			}
+		}
+	}
 	c.page.Data = d
 	return "doc.html", nil
 }

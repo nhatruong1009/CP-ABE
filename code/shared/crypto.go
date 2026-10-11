@@ -47,17 +47,23 @@ func SealPayload(dek []byte, p Payload, aad []byte) (nonce, ct []byte, err error
 var ErrIntegrity = errors.New("bản mã bị sửa đổi (AES-GCM không hợp lệ)")
 
 func OpenPayload(dek, nonce, ct, aad []byte) (Payload, error) {
+	p, _, err := OpenPayloadRaw(dek, nonce, ct, aad)
+	return p, err
+}
+
+// OpenPayloadRaw trả thêm plaintext thô (JSON) để UI hiển thị quy trình giải mã.
+func OpenPayloadRaw(dek, nonce, ct, aad []byte) (Payload, []byte, error) {
 	var p Payload
 	gcm, err := newGCM(dek)
 	if err != nil {
-		return p, err
+		return p, nil, err
 	}
 	plain, err := gcm.Open(nil, nonce, ct, aad)
 	if err != nil {
-		return p, ErrIntegrity
+		return p, nil, ErrIntegrity
 	}
 	err = json.Unmarshal(plain, &p)
-	return p, err
+	return p, plain, err
 }
 
 // ---- Tầng 2: Policy Key đọc (X25519 sealed box) ----

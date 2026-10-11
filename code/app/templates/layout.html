@@ -42,6 +42,21 @@
   label { font-weight:600; display:block; margin:12px 0 4px; }
   .row { display:flex; gap:16px; flex-wrap:wrap; } .row > * { flex:1; min-width:260px; }
   .scroll { overflow-x:auto; }
+  .flow { display:flex; flex-wrap:wrap; align-items:center; gap:4px; margin:10px 0 16px; }
+  .flow .box { border:1px solid var(--line); border-radius:6px; padding:6px 10px; background:#f3f5f9; font-size:13px; text-align:center; line-height:1.3; }
+  .flow .box small { color:var(--muted); }
+  .flow .cloud { background:var(--badbg); } .flow .l1 { background:#eae6fb; } .flow .l2 { background:#e3f0fb; } .flow .l3 { background:var(--okbg); }
+  .flow .arr { color:var(--muted); }
+  details.step { border:1px solid var(--line); border-left:4px solid var(--ok); border-radius:6px; margin:8px 0; padding:6px 12px; background:#fff; }
+  details.step.fail { border-left-color:var(--bad); background:#fffafa; }
+  details.step.skip { border-left-color:#c5cad3; opacity:.6; }
+  details.step summary { cursor:pointer; display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  details.step .num { display:inline-flex; width:22px; height:22px; border-radius:50%; background:var(--brand); color:#fff; font-size:12px; align-items:center; justify-content:center; }
+  details.step .where { font-size:12px; color:var(--muted); background:#eef1f6; padding:1px 6px; border-radius:4px; }
+  details.step .dur { margin-left:auto; font-size:12px; color:var(--muted); }
+  table.kv { border:0; margin-top:4px; } table.kv th { background:none; width:34%; font-weight:600; font-size:13px; }
+  table.kv td, table.kv th { border-bottom:1px dashed var(--line); padding:5px 8px; }
+  table.kv tr.bad td, table.kv tr.bad th { color:var(--bad); }
 </style>
 </head>
 <body>

@@ -34,10 +34,40 @@
   </div>
 </div>
 
+{{$sel := .Selected}}
+<div class="card" id="trace">
+  <h2 style="margin-top:0">🔍 Quy trình giải mã chi tiết · phiên bản v{{$sel.V.Version}}</h2>
+  <p class="muted">Đang đóng vai <b>{{$.Me.Name}}</b>, khóa ABE epoch {{$.Me.Epoch}}. Mọi bước chạy trong <b>app (vùng tin cậy)</b>;
+    cloud chỉ cung cấp dữ liệu thô ở bước 1–2.</p>
+  <div class="flow">
+    <span class="box cloud">☁ Cloud<br><small>bản mã + header</small></span><span class="arr">→</span>
+    <span class="box">Kiểm chữ ký<br><small>authority</small></span><span class="arr">→</span>
+    <span class="box">Đối chiếu<br><small>thuộc tính</small></span><span class="arr">→</span>
+    <span class="box l1">Tầng 1 · CP-ABE<br><small>→ Policy private key</small></span><span class="arr">→</span>
+    <span class="box l2">Tầng 2 · X25519<br><small>→ DEK</small></span><span class="arr">→</span>
+    <span class="box l3">Tầng 3 · AES-GCM<br><small>→ nội dung</small></span><span class="arr">→</span>
+    <span class="box">Chữ ký ghi<br><small>Ed25519</small></span>
+  </div>
+  {{range $sel.Trace}}
+  <details class="step {{.Status}}" {{if ne .Status "skip"}}open{{end}}>
+    <summary>
+      <span class="num">{{.N}}</span> <b>{{.Title}}</b>
+      {{if eq .Status "ok"}}<span class="tag ok">✔ đạt</span>{{else if eq .Status "fail"}}<span class="tag bad">✖ thất bại</span>{{else}}<span class="tag">bỏ qua</span>{{end}}
+      {{if .Where}}<span class="where">{{.Where}}</span>{{end}}
+      {{if .Dur}}<span class="dur">{{.Dur}}</span>{{end}}
+    </summary>
+    <p class="muted">{{.Desc}}</p>
+    {{if .Fields}}<table class="kv">
+      {{range .Fields}}<tr{{if .Bad}} class="bad"{{end}}><th>{{.K}}</th><td>{{if .Mono}}<code>{{.V}}</code>{{else}}{{.V}}{{end}}</td></tr>{{end}}
+    </table>{{end}}
+  </details>
+  {{end}}
+</div>
+
 <h2>Lịch sử phiên bản</h2>
 <div class="scroll">
 <table>
-  <tr><th>Phiên bản</th><th>Thời điểm</th><th>Tiêu đề</th><th>Người ghi</th><th>Policy Key đọc</th><th>Write Key</th><th>Chữ ký</th><th>Trạng thái</th></tr>
+  <tr><th>Phiên bản</th><th>Thời điểm</th><th>Tiêu đề</th><th>Người ghi</th><th>Policy Key đọc</th><th>Write Key</th><th>Chữ ký</th><th>Trạng thái</th><th></th></tr>
   {{range .History}}
   <tr>
     <td>v{{.V.Version}}</td><td>{{time .V.CreatedAt}}</td>
@@ -46,6 +76,7 @@
     <td>thế hệ {{.V.ReadGen}}</td><td>thế hệ {{.V.WriteGen}}</td>
     <td>{{if .SigOK}}<span class="tag ok">✔</span>{{else}}<span class="tag bad">✖</span>{{end}}</td>
     <td>{{if .OK}}<span class="tag ok">đọc được</span>{{else}}<span class="tag bad">{{.Msg}}</span>{{end}}</td>
+    <td>{{if eq .V.Version $sel.V.Version}}<b>đang xem</b>{{else}}<a href="?v={{.V.Version}}#trace">Xem quy trình</a>{{end}}</td>
   </tr>
   {{end}}
 </table>

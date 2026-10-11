@@ -57,6 +57,8 @@
   table.kv { border:0; margin-top:4px; } table.kv th { background:none; width:34%; font-weight:600; font-size:13px; }
   table.kv td, table.kv th { border-bottom:1px dashed var(--line); padding:5px 8px; }
   table.kv tr.bad td, table.kv tr.bad th { color:var(--bad); }
+  table.kv td code { display:block; max-height:140px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  details.step.info { border-left-color:#2456a6; }
 </style>
 </head>
 <body>
@@ -67,6 +69,7 @@
     <a href="/new" class="{{if eq .Nav "new"}}on{{end}}">Tạo mới</a>
     <a href="/admin" class="{{if eq .Nav "admin"}}on{{end}}">Quản trị thuộc tính</a>
     <a href="/cloud" class="{{if eq .Nav "cloud"}}on{{end}}">Góc nhìn Cloud</a>
+    <a href="/glossary" class="{{if eq .Nav "glossary"}}on{{end}}">Thuật ngữ</a>
   </nav>
   <form method="post" action="/as" id="switch">
     <input type="hidden" name="back" value="">
@@ -94,3 +97,19 @@
 <script>document.querySelector('#switch [name=back]').value = location.pathname;</script>
 </body>
 </html>
+{{define "steps"}}
+{{range .}}
+<details class="step {{.Status}}" {{if ne .Status "skip"}}open{{end}}>
+  <summary>
+    <span class="num">{{.N}}</span> <b>{{.Title}}</b>
+    {{if eq .Status "ok"}}<span class="tag ok">✔ đạt</span>{{else if eq .Status "fail"}}<span class="tag bad">✖ thất bại</span>{{else}}<span class="tag">bỏ qua</span>{{end}}
+    {{if .Where}}<span class="where">{{.Where}}</span>{{end}}
+    {{if .Dur}}<span class="dur">{{.Dur}}</span>{{end}}
+  </summary>
+  {{if .Desc}}<p class="muted">{{.Desc}}</p>{{end}}
+  {{if .Fields}}<table class="kv">
+    {{range .Fields}}<tr{{if .Bad}} class="bad"{{end}}><th>{{.K}}</th><td>{{if .Mono}}<code>{{.V}}</code>{{else}}{{.V}}{{end}}</td></tr>{{end}}
+  </table>{{end}}
+</details>
+{{end}}
+{{end}}

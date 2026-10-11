@@ -28,6 +28,7 @@ type docData struct {
 	Latest   ReadResult
 	Selected ReadResult // phiên bản đang xem quy trình giải mã (?v=N, mặc định mới nhất)
 	History  []ReadResult
+	Write    *writeTrace // quy trình ghi vừa thực hiện (nếu có)
 }
 
 func (s *Server) handleDoc(c *ctx) (string, error) {
@@ -44,6 +45,7 @@ func (s *Server) handleDoc(c *ctx) (string, error) {
 		d.History = append(d.History, c.sess.Read(v))
 	}
 	d.Latest, d.Selected = d.History[0], d.History[0]
+	d.Write = s.popWrite(c.page.Me.UserID, vs[0].DocID)
 	if n, err := strconv.Atoi(c.r.URL.Query().Get("v")); err == nil {
 		for _, h := range d.History {
 			if h.V.Version == n {
@@ -58,6 +60,9 @@ func (s *Server) handleDoc(c *ctx) (string, error) {
 // ---------------- Tạo / sửa ----------------
 
 type formData struct {
+	CanWrite     bool
+	Check        []*Step // quy trình xem xét quyền sửa
+	Write        []*Step // quy trình ghi (khi tạo mới thất bại)
 	IsNew        bool
 	DocID        string
 	BaseVersion  int
@@ -84,14 +89,14 @@ func (s *Server) formOptions(f *formData) {
 
 func (s *Server) handleNewForm(c *ctx) (string, error) {
 	c.page.Title, c.page.Nav = "Tạo tài liệu", "new"
-	f := &formData{IsNew: true, ReadLogical: "dept_finance or role_director", WriteLogical: "dept_finance and role_manager"}
+	f := &formData{IsNew: true, CanWrite: true, ReadLogical: "dept_finance or role_director", WriteLogical: "dept_finance and role_manager"}
 	s.formOptions(f)
 	c.page.Data = f
 	return "form.html", nil
 }
 
 func (s *Server) handleNew(c *ctx) (string, error) {
-	f := &formData{IsNew: true, Title: c.r.FormValue("title"), Body: c.r.FormValue("body"),
+	f := &formData{IsNew: true, CanWrite: true, Title: c.r.FormValue("title"), Body: c.r.FormValue("body"),
 		ReadLogical: c.r.FormValue("read"), WriteLogical: c.r.FormValue("write")}
 	fail := func(err error) (string, error) {
 		c.page.Title, c.page.Nav = "Tạo tài liệu", "new"
@@ -108,10 +113,12 @@ func (s *Server) handleNew(c *ctx) (string, error) {
 		return fail(fmt.Errorf("write policy: %w", err))
 	}
 	id := shared.NewDocID()
-	err = c.sess.Write(id, 1, rid, wid, shared.Payload{Title: f.Title, Body: f.Body, Author: c.page.Me.Name})
+	steps, err := c.sess.Write(id, 1, rid, wid, shared.Payload{Title: f.Title, Body: f.Body, Author: c.page.Me.Name}, false)
 	if err != nil {
+		f.Write = steps
 		return fail(err)
 	}
+	s.putWrite(c.page.Me.UserID, &writeTrace{DocID: id, Title: "Quy trình ghi: tạo v1", Steps: steps})
 	return c.redirect("/doc/"+id, "Đã mã hóa và tải lên cloud: "+f.Title, "")
 }
 
@@ -124,10 +131,8 @@ func (s *Server) handleEditForm(c *ctx) (string, error) {
 	r := c.sess.Read(vs[0])
 	f := &formData{DocID: vs[0].DocID, BaseVersion: vs[0].Version, ReadLogical: r.ReadLogical,
 		WriteLogical: r.WriteLogical, CanRead: r.OK(), Title: r.Payload.Title, Body: r.Payload.Body}
+	f.Check, f.CanWrite = c.sess.WriteCheck(vs[0], r.OK())
 	c.page.Data = f
-	if !r.CanWrite {
-		return "form.html", fmt.Errorf("Bạn không thỏa write policy (%s), cloud sẽ từ chối khi lưu", r.WriteLogical)
-	}
 	return "form.html", nil
 }
 
@@ -139,8 +144,9 @@ func (s *Server) handleEdit(c *ctx) (string, error) {
 		return c.redirect("/", "", "Không tìm thấy tài liệu")
 	}
 	cur := vs[0]
-	err = c.sess.Write(id, base+1, cur.ReadPolicyID, cur.WritePolicyID,
-		shared.Payload{Title: c.r.FormValue("title"), Body: c.r.FormValue("body"), Author: c.page.Me.Name})
+	steps, err := c.sess.Write(id, base+1, cur.ReadPolicyID, cur.WritePolicyID,
+		shared.Payload{Title: c.r.FormValue("title"), Body: c.r.FormValue("body"), Author: c.page.Me.Name}, false)
+	s.putWrite(c.page.Me.UserID, &writeTrace{DocID: id, Title: fmt.Sprintf("Quy trình ghi: tạo v%d", base+1), Steps: steps})
 	if err != nil {
 		return c.redirect("/doc/"+id, "", friendly(err))
 	}
@@ -153,7 +159,9 @@ func (s *Server) handleForge(c *ctx) (string, error) {
 	if err != nil || len(vs) == 0 {
 		return c.redirect("/", "", "Không tìm thấy tài liệu")
 	}
-	err = c.sess.Forge(id, vs[0].Version+1, vs[0].ReadPolicyID, vs[0].WritePolicyID)
+	steps, err := c.sess.Write(id, vs[0].Version+1, vs[0].ReadPolicyID, vs[0].WritePolicyID,
+		shared.Payload{Title: "NỘI DUNG GIẢ MẠO", Body: "bị ghi đè bởi " + c.page.Me.Name, Author: c.page.Me.Name}, true)
+	s.putWrite(c.page.Me.UserID, &writeTrace{DocID: id, Title: "Quy trình ghi TRÁI PHÉP (khóa ký tự tạo)", Steps: steps})
 	if err != nil {
 		return c.redirect("/doc/"+id, "", "Thử ghi trái phép thất bại đúng như mong đợi. "+friendly(err))
 	}
@@ -229,4 +237,9 @@ func (s *Server) handleTamper(c *ctx) (string, error) {
 		return c.redirect("/cloud", "", friendly(err))
 	}
 	return c.redirect("/doc/"+id, fmt.Sprintf("Cloud vừa sửa trái phép 1 bit của phiên bản %d. Xem app phát hiện thế nào.", v), "")
+}
+
+func (s *Server) handleGlossary(c *ctx) (string, error) {
+	c.page.Title, c.page.Nav = "Thuật ngữ", "glossary"
+	return "glossary.html", nil
 }

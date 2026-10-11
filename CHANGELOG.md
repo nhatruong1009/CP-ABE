@@ -3,6 +3,33 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] Tab Thuật ngữ, hiện đầy đủ giá trị, quy trình xét quyền sửa & quy trình ghi
+
+**Thêm**
+- Tab **Thuật ngữ** (`/glossary`), nằm sau "Góc nhìn Cloud". Giải thích các tên trường trên cloud (`wrapped_dek`, `abe_wrapped_priv`, `read_gen`, `compiled_expr`, `header_sig`…), khóa/thuật toán (DEK, Policy Key, Write Key, X25519, AES-GCM, AAD…), khái niệm thu hồi (version, thế hệ, epoch, Lazy/Eager…) và thành phần hệ thống.
+- **Quy trình xem xét quyền sửa** khi mở trang Sửa, gồm 7 bước:
+  1. Phiên bản mới nhất
+  2. Write policy + chữ ký authority
+  3. Đối chiếu thuộc tính
+  4. CP-ABE mở Write Key
+  5. Chuẩn bị bọc DEK
+  6. Những gì cloud sẽ kiểm
+  7. Kết luận
+- **Quy trình ghi** hiển thị sau khi lưu (cả khi bị từ chối):
+  1. Mở Write Key, hoặc dùng khóa giả khi ghi trái phép
+  2. DEK mới + AES-GCM
+  3. Bọc DEK
+  4. Ký
+  5. Gửi cloud + phản hồi (201/403/409)
+- `app/write.go`: `WriteCheck`, `Write` có ghi từng bước. `Forge` gộp vào `Write(…, forge=true)`.
+
+**Sửa**
+- Mọi tài liệu đều có nút **Xem** và **Sửa**. Không đủ quyền thì trang Sửa hiện lý do, khóa nút lưu, và có nút "thử ghi trái phép".
+- Phần chi tiết không còn che bớt: hiện đầy đủ hex của private key, DEK, bản mã, chữ ký, `abe_wrapped_priv`. Giá trị dài nằm trong ô cuộn.
+- Template dùng chung `steps` trong `layout.html`.
+
+**Trạng thái:** chưa build lại.
+
 ## [2026-10-11] Hiển thị chi tiết quy trình giải mã ("bản thô")
 
 **Thêm**

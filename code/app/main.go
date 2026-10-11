@@ -15,6 +15,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"cpabe-demo/shared"
@@ -30,6 +31,32 @@ type Server struct {
 	vault    *Vault
 	tpl      map[string]*template.Template
 	adminerU string
+
+	mu        sync.Mutex
+	lastWrite map[string]*writeTrace // user → quy trình ghi vừa thực hiện, hiển thị 1 lần ở trang tài liệu
+}
+
+type writeTrace struct {
+	DocID string
+	Title string
+	Steps []*Step
+}
+
+func (s *Server) putWrite(uid string, w *writeTrace) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.lastWrite[uid] = w
+}
+
+func (s *Server) popWrite(uid, docID string) *writeTrace {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	w := s.lastWrite[uid]
+	if w == nil || w.DocID != docID {
+		return nil
+	}
+	delete(s.lastWrite, uid)
+	return w
 }
 
 func main() {
@@ -37,7 +64,8 @@ func main() {
 		auth:     &shared.AuthClient{Base: env("AUTHORITY_URL", "http://authority:8081")},
 		cloud:    &shared.CloudClient{Base: env("CLOUD_URL", "http://cloud-api:8082")},
 		keys:     &Keystore{dir: env("KEYSTORE_DIR", "/keystore")},
-		adminerU: env("ADMINER_URL", "http://localhost:8090"),
+		adminerU:  env("ADMINER_URL", "http://localhost:8090"),
+		lastWrite: map[string]*writeTrace{},
 	}
 	var authPub []byte
 	var err error
@@ -67,6 +95,7 @@ func main() {
 	mux.HandleFunc("POST /admin/revoke", s.page(s.handleRevoke))
 	mux.HandleFunc("GET /cloud", s.page(s.handleCloud))
 	mux.HandleFunc("POST /cloud/tamper", s.page(s.handleTamper))
+	mux.HandleFunc("GET /glossary", s.page(s.handleGlossary))
 	mux.HandleFunc("POST /as", s.handleSwitch)
 
 	log.Println("app lắng nghe :8080")

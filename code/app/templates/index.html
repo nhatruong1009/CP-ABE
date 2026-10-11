@@ -14,7 +14,7 @@
     <td><code>{{.WriteLogical}}</code><br>{{if .CanWrite}}<span class="tag ok">bạn được sửa</span>{{else}}<span class="tag">chỉ xem</span>{{end}}</td>
     <td>v{{.V.Version}}</td>
     <td>{{if .SigOK}}<span class="tag ok">✔ hợp lệ</span>{{else}}<span class="tag bad">✖ sai</span>{{end}}</td>
-    <td style="white-space:nowrap"><a href="/doc/{{.V.DocID}}">Xem</a>{{if .CanWrite}} · <a href="/doc/{{.V.DocID}}/edit">Sửa</a>{{end}}</td>
+    <td style="white-space:nowrap"><a href="/doc/{{.V.DocID}}">Xem</a> · <a href="/doc/{{.V.DocID}}/edit">Sửa</a></td>
   </tr>
   {{else}}<tr><td colspan="6" class="muted">Chưa có tài liệu.</td></tr>{{end}}
 </table>

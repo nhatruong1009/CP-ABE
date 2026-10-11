@@ -1,0 +1,88 @@
+{{define "content"}}
+<h1>Thuật ngữ & viết tắt</h1>
+<p class="hint">Giải thích các tên trường, viết tắt và khái niệm xuất hiện trong UI, trong "Quy trình giải mã/ghi", và trong DB của cloud.</p>
+<p>
+  <a href="#fields">Trường dữ liệu trên cloud</a> ·
+  <a href="#keys">Khóa & thuật toán</a> ·
+  <a href="#mgmt">Quản lý quyền & thu hồi</a> ·
+  <a href="#components">Thành phần hệ thống</a>
+</p>
+
+<h2 id="fields">1. Trường dữ liệu trên cloud (bảng <code>document_versions</code>, <code>policies</code>, <code>policy_keys</code>)</h2>
+<div class="scroll"><table>
+  <tr><th style="width:18%">Tên</th><th style="width:22%">Viết đầy đủ</th><th>Ý nghĩa</th></tr>
+  <tr><td><code>doc_id</code></td><td>document id</td><td>Mã ngẫu nhiên của tài liệu. Không chứa thông tin gì về nội dung.</td></tr>
+  <tr><td><code>version</code> / <code>latest_version</code></td><td>số phiên bản</td><td>Mỗi lần sửa tạo một phiên bản mới (v1, v2…), bản cũ được giữ lại. Cloud chỉ nhận phiên bản = mới nhất + 1.</td></tr>
+  <tr><td><code>wrapped_dek</code></td><td>wrapped Data Encryption Key</td><td><b>DEK đã được "bọc"</b> (mã hóa) bằng public key của Policy Key đọc. Gồm 80 byte: 32 byte khóa tạm (ephemeral) + 32 byte DEK đã mã hóa + 16 byte mã xác thực. Chỉ ai có private key của Policy mới mở ra được DEK.</td></tr>
+  <tr><td><code>nonce</code></td><td>number used once</td><td>12 byte ngẫu nhiên dùng một lần cho AES-GCM. Không bí mật, nhưng không được dùng lại với cùng một khóa.</td></tr>
+  <tr><td><code>ciphertext</code></td><td>bản mã</td><td>Tiêu đề + nội dung + tác giả (dạng JSON), mã hóa bằng DEK với AES-256-GCM. Gồm cả 16 byte tag kiểm toàn vẹn ở cuối.</td></tr>
+  <tr><td><code>signature</code></td><td>chữ ký Ed25519</td><td>64 byte, ký bằng private Write Key. Chứng minh phiên bản do người thỏa write policy tạo ra và chưa bị sửa.</td></tr>
+  <tr><td><code>read_policy_id</code></td><td>id chính sách đọc</td><td>Dạng <code>r_xxxxxxxxxx</code> (<b>r</b> = read). Băm từ nội dung chính sách nên cùng chính sách thì cùng id.</td></tr>
+  <tr><td><code>write_policy_id</code></td><td>id chính sách ghi</td><td>Dạng <code>w_xxxxxxxxxx</code> (<b>w</b> = write).</td></tr>
+  <tr><td><code>read_gen</code></td><td>read generation</td><td>Thế hệ của Policy Key đọc đã dùng để bọc DEK của phiên bản này.</td></tr>
+  <tr><td><code>write_gen</code></td><td>write generation</td><td>Thế hệ của Write Key đã dùng để ký phiên bản này.</td></tr>
+  <tr><td><code>kind</code></td><td>loại chính sách</td><td><code>read</code> (ai được đọc) hoặc <code>write</code> (ai được sửa).</td></tr>
+  <tr><td><code>logical_expr</code></td><td>logical expression</td><td>Chính sách <b>logic</b> do người dùng viết, không có version. Ví dụ <code>dept_finance or role_director</code>.</td></tr>
+  <tr><td><code>compiled_expr</code></td><td>compiled expression</td><td>Chính sách <b>thật</b> mà CP-ABE dùng, đã gắn version hiện hành của từng thuộc tính. Ví dụ <code>(dept_finance: v2) or (role_director: v1)</code>.</td></tr>
+  <tr><td><code>current_gen</code></td><td>current generation</td><td>Thế hệ hiện hành của chính sách. Ghi mới luôn dùng thế hệ này.</td></tr>
+  <tr><td><code>public_key</code></td><td>khóa công khai</td><td>Public key của một thế hệ Policy Key (X25519, 32 byte) hoặc Write Key (Ed25519, 32 byte). Công khai, ai cũng dùng được.</td></tr>
+  <tr><td><code>abe_wrapped_priv</code></td><td>ABE-wrapped private key</td><td><b>Private key của Policy Key / Write Key đã được mã hóa bằng CP-ABE</b> theo <code>compiled_expr</code>. Khoảng 2–3 KB. Chỉ user có thuộc tính (đúng version) thỏa chính sách mới giải mã được. Rỗng = thế hệ đã bị hủy.</td></tr>
+  <tr><td><code>header_sig</code></td><td>header signature</td><td>Chữ ký của authority trên (policy_id, kind, logical_expr, current_gen). App kiểm để cloud không đổi được chính sách hay thế hệ hiện hành.</td></tr>
+  <tr><td><code>key_sig</code></td><td>key signature</td><td>Chữ ký của authority trên public key của từng thế hệ. Chặn cloud tráo Policy Key bằng khóa của nó.</td></tr>
+  <tr><td><code>created_at</code></td><td>thời điểm tạo</td><td>Không được mã hóa (metadata). Cloud biết khi nào có phiên bản mới, nhưng không biết nội dung.</td></tr>
+</table></div>
+
+<h2 id="keys">2. Khóa & thuật toán</h2>
+<div class="scroll"><table>
+  <tr><th style="width:18%">Tên</th><th style="width:22%">Viết đầy đủ</th><th>Ý nghĩa</th></tr>
+  <tr><td>CP-ABE</td><td>Ciphertext-Policy Attribute-Based Encryption</td><td>Mã hóa dựa trên thuộc tính, chính sách gắn vào bản mã. Giải mã được khi thuộc tính trong khóa thỏa chính sách.</td></tr>
+  <tr><td>TKN20</td><td>Tomida–Kawahara–Nishimaki 2020</td><td>Lược đồ CP-ABE đang dùng (PKC 2020). Hỗ trợ and/or/not, an toàn CCA.</td></tr>
+  <tr><td>CIRCL</td><td>Cloudflare Interoperable Reusable Cryptographic Library</td><td>Thư viện mật mã Go của Cloudflare, chứa cài đặt TKN20 (<code>abe/cpabe/tkn20</code>).</td></tr>
+  <tr><td>PK</td><td>Public Key (hệ thống ABE)</td><td>Khóa công khai của hệ thống, dùng để mã hóa CP-ABE. Authority giữ và dùng.</td></tr>
+  <tr><td>MSK</td><td>Master Secret Key</td><td>Khóa chủ, chỉ authority giữ. Dùng để cấp khóa cho user (KeyGen). Lộ MSK là lộ toàn hệ thống.</td></tr>
+  <tr><td>Setup / KeyGen / Encrypt / Decrypt</td><td>4 thuật toán CP-ABE</td><td>Sinh PK/MSK · cấp khóa theo thuộc tính · mã hóa theo chính sách · giải mã.</td></tr>
+  <tr><td>Khóa ABE của user</td><td>Attribute Key</td><td>Khóa bí mật authority cấp, chứa thuộc tính kèm version (vd. <code>dept_finance: v1</code>). Lưu trong keystore của app.</td></tr>
+  <tr><td>Policy Key</td><td>khóa chính sách đọc</td><td>Cặp khóa X25519, mỗi chính sách đọc một cặp cho mỗi thế hệ. Public key dùng bọc DEK, private key được mã hóa CP-ABE (<code>abe_wrapped_priv</code>). Là <b>Tầng 2</b>.</td></tr>
+  <tr><td>Write Key</td><td>khóa chính sách ghi</td><td>Cặp khóa Ed25519 của một chính sách ghi. Private key được mã hóa CP-ABE, dùng để ký phiên bản mới.</td></tr>
+  <tr><td>DEK</td><td>Data Encryption Key</td><td>Khóa AES-256 (32 byte) ngẫu nhiên, mỗi phiên bản tài liệu một khóa. Mã hóa nội dung. Là <b>Tầng 3</b>. (Slide cũ gọi là CEK = Content Encryption Key.)</td></tr>
+  <tr><td>Tầng 1 / 2 / 3</td><td>phân cấp khóa 3 tầng</td><td>Tầng 1: CP-ABE bảo vệ private key của Policy · Tầng 2: Policy Key bảo vệ DEK · Tầng 3: DEK bảo vệ nội dung.</td></tr>
+  <tr><td>X25519</td><td>trao đổi khóa trên đường cong Curve25519</td><td>Dùng cho Policy Key. Ai có public key đều bọc được DEK.</td></tr>
+  <tr><td>sealed box</td><td>NaCl/libsodium sealed box</td><td>Cách "bọc" dữ liệu bằng public key X25519 (<code>nacl/box.SealAnonymous</code>). Tạo ra <code>wrapped_dek</code>.</td></tr>
+  <tr><td>Ed25519</td><td>chữ ký số trên Curve25519</td><td>Dùng cho Write Key (chữ ký ghi) và khóa của authority (header_sig, key_sig).</td></tr>
+  <tr><td>AES-256-GCM</td><td>Advanced Encryption Standard, khóa 256 bit, chế độ Galois/Counter Mode</td><td>Mã hóa đối xứng có xác thực: vừa giữ bí mật vừa phát hiện bản mã bị sửa (sửa 1 bit là giải mã thất bại).</td></tr>
+  <tr><td>AAD</td><td>Additional Authenticated Data</td><td>Dữ liệu không mã hóa nhưng được AES-GCM xác thực. Ở đây là <code>doc_id:version</code>: chặn việc lấy bản mã của tài liệu/phiên bản này gắn sang chỗ khác.</td></tr>
+  <tr><td>SHA-256</td><td>Secure Hash Algorithm 256 bit</td><td>Hàm băm. Thông điệp được ký là SHA-256 của các trường của phiên bản.</td></tr>
+  <tr><td>hex</td><td>hệ thập lục phân</td><td>Cách hiển thị byte: mỗi byte = 2 ký tự 0–9a–f. Ví dụ 32 byte = 64 ký tự.</td></tr>
+</table></div>
+
+<h2 id="mgmt">3. Quản lý quyền & thu hồi</h2>
+<div class="scroll"><table>
+  <tr><th style="width:18%">Tên</th><th style="width:22%">Viết đầy đủ</th><th>Ý nghĩa</th></tr>
+  <tr><td>Thuộc tính</td><td>attribute</td><td>Đặc điểm của người dùng: phòng ban (<code>dept_*</code>), vai trò (<code>role_*</code>), dự án (<code>proj_*</code>).</td></tr>
+  <tr><td><code>v1</code>, <code>v2</code>…</td><td>version thuộc tính</td><td>Tăng mỗi lần thu hồi thuộc tính đó của ai đó. Khóa cũ mang version cũ nên không khớp chính sách mới.</td></tr>
+  <tr><td>Thế hệ (gen)</td><td>generation</td><td>Mỗi lần thu hồi, các chính sách liên quan được sinh Policy Key / Write Key <b>mới</b>. Thế hệ cũ được mã hóa lại theo version mới (đọc) hoặc hủy (ghi).</td></tr>
+  <tr><td>Epoch khóa</td><td>key epoch</td><td>Số lần authority cấp lại khóa cho một user. Tăng khi user được cấp/thu hồi thuộc tính, hoặc khi version thuộc tính của họ đổi.</td></tr>
+  <tr><td>Grant</td><td>cấp thuộc tính</td><td>KeyGen lại 1 lần cho user. Không cần mã hóa lại dữ liệu; user đọc được cả tài liệu cũ.</td></tr>
+  <tr><td>Revoke</td><td>thu hồi thuộc tính</td><td>Tăng version → KeyGen lại cho người còn giữ thuộc tính → chính sách liên quan sang thế hệ mới. Không thu hồi tài khoản.</td></tr>
+  <tr><td>Lazy</td><td>lazy re-encryption</td><td>Không đụng tài liệu cũ; khi có người <b>sửa</b>, phiên bản mới tự dùng DEK mới và Policy Key thế hệ mới.</td></tr>
+  <tr><td>Eager</td><td>eager re-encryption</td><td>Authority bọc lại DEK của mọi phiên bản sang thế hệ mới ngay lập tức, rồi hủy thế hệ cũ.</td></tr>
+  <tr><td>Đã hủy</td><td>retired</td><td>Thế hệ khóa không còn <code>abe_wrapped_priv</code>: không ai mở được nữa (Write Key cũ, hoặc Policy Key cũ sau Eager).</td></tr>
+  <tr><td>Ghi mà không đọc</td><td>write-only</td><td>Thỏa write policy nhưng không thỏa read policy: vẫn tạo phiên bản mới (chỉ cần public key Policy đọc) nhưng không xem được nội dung.</td></tr>
+  <tr><td>Optimistic locking</td><td>khóa lạc quan</td><td>Không khóa tài liệu khi sửa; lúc lưu nếu người khác đã lưu trước thì cloud trả 409.</td></tr>
+  <tr><td>403</td><td>HTTP Forbidden</td><td>Cloud từ chối ghi: chữ ký sai hoặc ký bằng Write Key thế hệ đã bị thu hồi.</td></tr>
+  <tr><td>409</td><td>HTTP Conflict</td><td>Xung đột phiên bản: có người đã lưu phiên bản đó trước.</td></tr>
+  <tr><td>Collusion</td><td>thông đồng</td><td>Nhiều user gộp khóa để giải mã thứ mà từng người không được phép. CP-ABE chống được: khóa của mỗi user được trộn ngẫu nhiên riêng.</td></tr>
+  <tr><td>Cache Policy Key</td><td></td><td>App giữ private key của Policy đã mở trong bộ nhớ phiên, nên đọc nhiều tài liệu cùng chính sách chỉ tốn 1 lần giải mã CP-ABE.</td></tr>
+</table></div>
+
+<h2 id="components">4. Thành phần hệ thống</h2>
+<div class="scroll"><table>
+  <tr><th style="width:18%">Tên</th><th style="width:22%">Vùng</th><th>Ý nghĩa</th></tr>
+  <tr><td><code>authority</code></td><td>Tin cậy</td><td>Key Authority / KGC (Key Generation Center): giữ MSK, quản lý thuộc tính + version, cấp khóa, đăng chính sách, thu hồi.</td></tr>
+  <tr><td><code>app</code></td><td>Tin cậy</td><td>Ứng dụng client + giao diện web này. Mã hóa, giải mã, ký <b>tại chỗ</b>; plaintext không rời khỏi đây.</td></tr>
+  <tr><td>keystore</td><td>Tin cậy</td><td>Thư mục của app lưu khóa ABE của từng user (mọi epoch), mô phỏng thiết bị của người dùng.</td></tr>
+  <tr><td><code>cloud-api</code></td><td>Không tin cậy</td><td>Cổng lưu trữ của nhà cung cấp cloud. Không có khóa bí mật nào; chỉ lưu bản mã và kiểm chữ ký bằng public key.</td></tr>
+  <tr><td><code>cloud-db</code></td><td>Không tin cậy</td><td>PostgreSQL của cloud. DBA xem được mọi bảng (qua Adminer) nhưng chỉ thấy bản mã.</td></tr>
+  <tr><td>Honest-but-curious</td><td></td><td>Giả định về cloud: làm đúng giao thức nhưng tò mò muốn đọc dữ liệu.</td></tr>
+</table></div>
+{{end}}

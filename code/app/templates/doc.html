@@ -23,17 +23,23 @@
 <div class="card">
   <b>Chính sách</b>: đọc <code>{{$l.ReadLogical}}</code> · ghi <code>{{$l.WriteLogical}}</code>
   <div style="margin-top:10px">
-  {{if $l.CanWrite}}
-    <a class="btn" href="/doc/{{$l.V.DocID}}/edit">✏ Sửa (tạo phiên bản mới)</a>
-  {{else}}
+  <a class="btn" href="/doc/{{$l.V.DocID}}/edit">✏ Sửa (xem quy trình xét quyền sửa)</a>
+  {{if not $l.CanWrite}}
     <form method="post" action="/doc/{{$l.V.DocID}}/forge" style="display:inline">
       <button class="danger">⚠ Thử ghi trái phép (ký bằng khóa tự tạo)</button>
     </form>
-    <span class="muted">{{$.Me.Name}} không thỏa write policy. Nút này mô phỏng kẻ ghi trái phép, cloud phải từ chối.</span>
+    <div class="muted" style="margin-top:6px">{{$.Me.Name}} không thỏa write policy. Nút đỏ mô phỏng kẻ ghi trái phép, cloud phải từ chối.</div>
   {{end}}
   </div>
 </div>
 
+{{if .Write}}
+<div class="card" id="write">
+  <h2 style="margin-top:0">📝 {{.Write.Title}}</h2>
+  <p class="muted">Các bước app vừa thực hiện khi lưu (đóng vai <b>{{$.Me.Name}}</b>). Chỉ bước cuối là gửi lên cloud.</p>
+  {{template "steps" .Write.Steps}}
+</div>
+{{end}}
 {{$sel := .Selected}}
 <div class="card" id="trace">
   <h2 style="margin-top:0">🔍 Quy trình giải mã chi tiết · phiên bản v{{$sel.V.Version}}</h2>
@@ -48,20 +54,7 @@
     <span class="box l3">Tầng 3 · AES-GCM<br><small>→ nội dung</small></span><span class="arr">→</span>
     <span class="box">Chữ ký ghi<br><small>Ed25519</small></span>
   </div>
-  {{range $sel.Trace}}
-  <details class="step {{.Status}}" {{if ne .Status "skip"}}open{{end}}>
-    <summary>
-      <span class="num">{{.N}}</span> <b>{{.Title}}</b>
-      {{if eq .Status "ok"}}<span class="tag ok">✔ đạt</span>{{else if eq .Status "fail"}}<span class="tag bad">✖ thất bại</span>{{else}}<span class="tag">bỏ qua</span>{{end}}
-      {{if .Where}}<span class="where">{{.Where}}</span>{{end}}
-      {{if .Dur}}<span class="dur">{{.Dur}}</span>{{end}}
-    </summary>
-    <p class="muted">{{.Desc}}</p>
-    {{if .Fields}}<table class="kv">
-      {{range .Fields}}<tr{{if .Bad}} class="bad"{{end}}><th>{{.K}}</th><td>{{if .Mono}}<code>{{.V}}</code>{{else}}{{.V}}{{end}}</td></tr>{{end}}
-    </table>{{end}}
-  </details>
-  {{end}}
+  {{template "steps" $sel.Trace}}
 </div>
 
 <h2>Lịch sử phiên bản</h2>

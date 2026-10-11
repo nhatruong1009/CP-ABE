@@ -2,6 +2,19 @@
 {{with .Data}}
 <p><a href="{{if .IsNew}}/{{else}}/doc/{{.DocID}}{{end}}">← Quay lại</a></p>
 <h1>{{if .IsNew}}Tạo tài liệu mới{{else}}Sửa tài liệu (tạo phiên bản {{.BaseVersion}}+1){{end}}</h1>
+{{if .Check}}
+<div class="card">
+  <h2 style="margin-top:0">🔑 Quy trình xem xét quyền sửa: {{if .CanWrite}}<span class="tag ok">✔ được sửa</span>{{else}}<span class="tag bad">✖ không được sửa</span>{{end}}</h2>
+  <p class="muted">Chạy trong app (vùng tin cậy) ngay khi mở trang, chưa ghi gì lên cloud. Đóng vai <b>{{$.Me.Name}}</b>, khóa epoch {{$.Me.Epoch}}.</p>
+  {{template "steps" .Check}}
+</div>
+{{end}}
+{{if .Write}}
+<div class="card">
+  <h2 style="margin-top:0">📝 Quy trình ghi (thất bại)</h2>
+  {{template "steps" .Write}}
+</div>
+{{end}}
 <form method="post" action="{{if .IsNew}}/new{{else}}/doc/{{.DocID}}/edit{{end}}" class="card">
   {{if not .IsNew}}<input type="hidden" name="base_version" value="{{.BaseVersion}}">{{end}}
   {{if and (not .IsNew) (not .CanRead)}}
@@ -33,7 +46,13 @@
 
   <p class="muted">Khi lưu, app sẽ: sinh DEK mới → mã hóa AES-GCM → bọc DEK bằng Policy Key đọc (thế hệ hiện hành)
     → mở Write Key bằng CP-ABE → ký → gửi bản mã lên cloud.</p>
-  <button>🔐 Mã hóa &amp; lưu lên cloud</button>
+  {{if .CanWrite}}<button>🔐 Mã hóa &amp; lưu lên cloud</button>
+  {{else}}<button disabled style="opacity:.5;cursor:not-allowed">🔐 Không đủ quyền sửa</button>{{end}}
 </form>
+{{if not .CanWrite}}
+<form method="post" action="/doc/{{.DocID}}/forge">
+  <button class="danger">⚠ Vẫn thử ghi trái phép (ký bằng khóa tự tạo) → xem cloud từ chối</button>
+</form>
+{{end}}
 {{end}}
 {{end}}

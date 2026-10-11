@@ -3,6 +3,26 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] Slide trình bày (Slidev, nền sáng)
+
+**Thêm**
+- `slides/slides.md`: 24 slide về cấu trúc hiện tại:
+  - bài toán, threat model cập nhật
+  - 6 cải tiến
+  - use case Công ty ABC
+  - kiến trúc 5 container / 2 vùng
+  - cấu trúc mã nguồn
+  - C1 TKN20, C2 khóa 3 tầng
+  - cấu trúc dữ liệu cloud
+  - luồng đọc, luồng ghi
+  - version thuộc tính, cấp/thu hồi, Lazy/Eager
+  - demo, kịch bản, kết quả đo, hạn chế, tham khảo
+
+  Sơ đồ dùng Mermaid. Có ghi chú cho người trình bày ở 7 slide chính. Số liệu chỉ lấy từ lần chạy thử thật (thu hồi Lazy ~0,66 s, Eager ~0,26 s, bản mã CP-ABE ~2,7 KB).
+- `slides/package.json` (Slidev, theme default, `colorSchema: light`), `slides/style.css`, `slides/.gitignore`.
+
+**Trạng thái:** chưa cài npm, chưa render.
+
 ## [2026-10-11] Tab Thuật ngữ, hiện đầy đủ giá trị, quy trình xét quyền sửa & quy trình ghi
 
 **Thêm**

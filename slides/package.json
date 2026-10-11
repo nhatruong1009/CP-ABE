@@ -1,0 +1,17 @@
+{
+  "name": "cpabe-slides",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "slidev slides.md --open false",
+    "build": "slidev build slides.md",
+    "export": "slidev export slides.md --output dist/cpabe-nhom06.pdf"
+  },
+  "dependencies": {
+    "@slidev/cli": "^51.0.0",
+    "@slidev/theme-default": "^0.25.0"
+  },
+  "devDependencies": {
+    "playwright-chromium": "^1.50.0"
+  }
+}

@@ -1,0 +1,30 @@
+/* Nền sáng, chữ gọn để bảng và sơ đồ vừa khung 16:9 */
+:root {
+  --brand: #1f3a68;
+  --accent: #b5342b;
+  --ok: #1f7a3f;
+}
+.slidev-layout {
+  background: #ffffff;
+  color: #1d2433;
+  font-size: 0.95rem;
+}
+.slidev-layout h1 { color: var(--brand); font-weight: 700; font-size: 1.9rem; margin-bottom: .6rem; }
+.slidev-layout h2 { color: var(--brand); font-size: 1.2rem; }
+.slidev-layout h3 { color: var(--accent); font-size: .78rem; letter-spacing: .06em; text-transform: uppercase; margin-bottom: .15rem; opacity: 1; }
+.slidev-layout table { font-size: .74rem; width: 100%; }
+.slidev-layout th { background: #eef1f6; }
+.slidev-layout td, .slidev-layout th { padding: .28rem .5rem; }
+.slidev-layout code { font-size: .78em; }
+.slidev-layout blockquote { border-left: 4px solid var(--brand); background: #f3f5f9; padding: .4rem .8rem; font-size: .85rem; }
+.small { font-size: .78rem; }
+.tiny { font-size: .66rem; color: #6b7385; }
+.ok { color: var(--ok); font-weight: 600; }
+.bad { color: var(--accent); font-weight: 600; }
+.box { border: 1px solid #e3e6ec; border-radius: 8px; padding: .55rem .8rem; background: #f8f9fb; }
+.box.green { background: #e6f4ea; border-color: #b9dfc4; }
+.box.red { background: #fbe9e9; border-color: #efc2c2; }
+.box.blue { background: #e8eef9; border-color: #c4d3ee; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: .7rem; }
+.grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: .8rem; }
+.mermaid { display: flex; justify-content: center; }

@@ -467,7 +467,7 @@ Lưu dạng JSON để dễ mở ra xem khi demo. Hệ thống thật nên dùng
 
 ## 8. Docker Compose
 
-> File thật: [docker-compose.yml](../docker-compose.yml). Khung dưới đây để giải thích.
+> File thật: [code/docker-compose.yml](../code/docker-compose.yml). Khung dưới đây để giải thích.
 
 ```yaml
 services:
@@ -517,14 +517,16 @@ Cấu trúc thư mục đề xuất:
 
 ```
 CP_ABE_1/
-├── docker-compose.yml
-├── Dockerfile      # 1 image chứa cả 3 binary
-├── go.mod          # 1 Go module: cpabe-demo
-├── authority/      # Setup, KeyGen, policy registry + biên dịch version, grant/revoke, eager rewrap
-├── app/            # Web UI (templates/), encrypt/decrypt/sign (vault.go), keystore
-├── cloudapi/       # REST + kiểm chữ ký + optimistic locking, schema tạo lúc khởi động
-├── shared/         # CP-ABE wrapper, Tầng 2–3, kiểu dữ liệu, client gọi cloud/authority
-└── docs/
+├── code/
+│   ├── docker-compose.yml
+│   ├── Dockerfile      # 1 image chứa cả 3 binary
+│   ├── go.mod, go.sum  # 1 Go module: cpabe-demo, phiên bản thư viện cố định
+│   ├── authority/      # Setup, KeyGen, policy registry + biên dịch version, grant/revoke, eager rewrap
+│   ├── app/            # Web UI (templates/), encrypt/decrypt/sign (vault.go), keystore
+│   ├── cloudapi/       # REST + kiểm chữ ký + optimistic locking, schema tạo lúc khởi động
+│   └── shared/         # CP-ABE wrapper, Tầng 2–3, kiểu dữ liệu, client gọi cloud/authority
+├── docs/
+└── ref/
 ```
 
 ---

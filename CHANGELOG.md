@@ -3,6 +3,24 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-11] Chuyển mã nguồn vào `code/`, cố định phiên bản thư viện
+
+**Sửa**
+- Chuyển `shared/ authority/ app/ cloudapi/ go.mod Dockerfile docker-compose.yml .dockerignore` vào `code/`.
+- Cố định thư viện bằng `go.mod`/`go.sum` lấy từ lần build đầu:
+  - Go 1.26
+  - CIRCL v1.6.5
+  - pgx v5.11.0
+  - x/crypto v0.58.0
+
+  Dockerfile dùng `go mod download` thay vì `go mod tidy`.
+- `docker-compose.yml`:
+  - đặt `name: cpabe-demo`
+  - chỉ build image 1 lần (service `authority`), 2 service còn lại dùng lại image
+- Cập nhật đường dẫn trong `README.md` và `docs/01-de-xuat-cai-tien.md`.
+
+**Kết quả build (trước khi chuyển thư mục):** `docker compose build` thành công, `go vet` không cảnh báo.
+
 ## [2026-10-11] PoC bằng Go: authority, app, cloud-api trên Docker
 
 **Quyết định:** chọn Go cho toàn bộ code (thay vì phương án Python + Charm-crypto).

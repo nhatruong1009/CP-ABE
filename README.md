@@ -1,12 +1,24 @@
 # Kho tài liệu CP-ABE: PoC cho Outsourced Storage
 
+```
+CP_ABE_1/
+├── code/        # mã nguồn Go + Dockerfile + docker-compose.yml
+├── docs/        # thiết kế, sổ nguồn tham khảo
+├── ref/         # tài liệu gốc, bản lưu mã nguồn thư viện đã đối chiếu
+├── tools/
+└── CHANGELOG.md
+```
+
 Đồ án môn An toàn và bảo mật trong HTTT (Nhóm 06). Thiết kế chi tiết: [docs/01-de-xuat-cai-tien.md](docs/01-de-xuat-cai-tien.md).
 
 ## Chạy
 
 Yêu cầu: Docker và Docker Compose. Không cần cài Go, vì code được biên dịch trong Docker.
 
+Toàn bộ mã nguồn nằm trong [code/](code/):
+
 ```bash
+cd code
 docker compose up -d --build     # lần đầu tải thư viện + build, mất vài phút
 docker compose logs -f authority # chờ dòng "authority lắng nghe :8081"
 ```

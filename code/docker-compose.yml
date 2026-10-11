@@ -3,14 +3,13 @@
 #   http://localhost:8090  Adminer: góc nhìn DBA của cloud (server: cloud-db, user/pass/db: cloud)
 # Xóa sạch để chạy lại từ đầu: docker compose down -v
 
-x-image: &image
-  image: cpabe-demo:latest
-  build: .
+name: cpabe-demo   # tên project cố định (thư mục chứa là "code")
 
 services:
   # ---------- VÙNG TIN CẬY ----------
   authority:
-    <<: *image
+    image: cpabe-demo:latest
+    build: .            # cả 3 service dùng chung image này
     command: ["authority"]
     environment:
       CLOUD_URL: http://cloud-api:8082
@@ -21,7 +20,8 @@ services:
     depends_on: [cloud-api]
 
   app:
-    <<: *image
+    image: cpabe-demo:latest
+    pull_policy: never
     command: ["app"]
     environment:
       AUTHORITY_URL: http://authority:8081
@@ -36,7 +36,8 @@ services:
   # ---------- VÙNG KHÔNG TIN CẬY (cloud) ----------
   # cloud-api chỉ nằm trong cloud_net nên KHÔNG gọi được authority.
   cloud-api:
-    <<: *image
+    image: cpabe-demo:latest
+    pull_policy: never
     command: ["cloudapi"]
     environment:
       DATABASE_URL: postgres://cloud:cloud@cloud-db:5432/cloud?sslmode=disable

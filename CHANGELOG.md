@@ -3,6 +3,18 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-19] Sửa câu mô tả chế độ Lazy / Eager cho đúng với code
+
+**Sửa**
+- `code/authority/main.go`: thông báo sau khi thu hồi ở chế độ Lazy đổi thành "phiên bản cũ giữ thế hệ khóa cũ; lần sửa sau tạo phiên bản mới dùng thế hệ mới".
+- `code/app/templates/admin.html`, ô chọn chế độ thu hồi:
+  - Lazy: "không bọc lại phiên bản cũ, phiên bản mới dùng thế hệ mới (rẻ)"
+  - Eager: "bọc lại ngay DEK các phiên bản còn ở thế hệ cũ, hủy thế hệ cũ"
+
+Lý do: nhánh Lazy của `revoke` không bọc lại gì; phiên bản cũ giữ DEK và `read_gen` cũ (thế hệ cũ đã được mã CP-ABE lại theo version mới). Câu cũ "bọc lại khi có người sửa" mâu thuẫn với code và với kết quả kiểm thử ngày 11/10 (Q3: v1, v2 vẫn ở thế hệ 1). Eager (`eagerRewrap`) chỉ bọc lại các phiên bản có `read_gen` khác thế hệ hiện hành, không phải mọi phiên bản.
+
+**Kiểm tra:** `go build ./...` và `go vet ./...` không lỗi. Chưa build lại Docker.
+
 ## [2026-10-11] Slide trình bày (Slidev, nền sáng)
 
 **Thêm**

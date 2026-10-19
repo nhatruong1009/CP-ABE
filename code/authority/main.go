@@ -260,7 +260,7 @@ func (a *Authority) revoke(uid, attr, mode string) (string, error) {
 		}
 		msg += fmt.Sprintf(" · EAGER: bọc lại DEK của %d phiên bản tài liệu, hủy thế hệ cũ", n)
 	} else {
-		msg += " · LAZY: tài liệu cũ được bọc lại khi có người sửa"
+		msg += " · LAZY: phiên bản cũ giữ thế hệ khóa cũ; lần sửa sau tạo phiên bản mới dùng thế hệ mới"
 	}
 	msg += fmt.Sprintf(" · %v", time.Since(start).Round(time.Millisecond))
 	a.st.audit("revoke", msg)

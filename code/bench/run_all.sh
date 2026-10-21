@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# C1: chạy toàn bộ phép đo trên Docker, mỗi lần chạy reset dữ liệu (docker compose down -v).
+# C1: chạy toàn bộ phép đo trên Docker, mỗi lần chạy reset dữ liệu (docker compose down -v) của project cpabe-bench.
 # Dùng: cd code && bash bench/run_all.sh > ../docs/bench-ket-qua.md
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Chạy trên project riêng "cpabe-bench" để không xóa dữ liệu của stack demo.
+export COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-cpabe-bench}
 export APP_PORT=${APP_PORT:-8098} ADMINER_PORT=${ADMINER_PORT:-8099}
 
 fresh() { # $1 = CLOUD_ENFORCE_READ

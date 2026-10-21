@@ -7,9 +7,26 @@ import (
 )
 
 // CloudClient gọi cloud-api. Token chỉ authority có (để đăng chính sách / bọc lại DEK).
+// User là access token của người đang gọi (C2), gửi kèm các lời gọi đọc / ghi tài liệu.
 type CloudClient struct {
 	Base  string
 	Token string
+	User  string
+}
+
+// As trả bản sao client gửi kèm access token của một user.
+func (c *CloudClient) As(userToken string) *CloudClient {
+	cp := *c
+	cp.User = userToken
+	return &cp
+}
+
+// auth: authority dùng admin token; app dùng access token của user.
+func (c *CloudClient) auth() string {
+	if c.Token != "" {
+		return c.Token
+	}
+	return c.User
 }
 
 func (c *CloudClient) url(format string, args ...any) string {
@@ -45,29 +62,29 @@ func (c *CloudClient) PutPolicy(p *Policy) error {
 // ListDocuments trả phiên bản mới nhất của mọi tài liệu.
 func (c *CloudClient) ListDocuments() ([]DocVersion, error) {
 	var vs []DocVersion
-	err := DoJSON(http.MethodGet, c.url("/documents"), "", nil, &vs)
+	err := DoJSON(http.MethodGet, c.url("/documents"), c.auth(), nil, &vs)
 	return vs, err
 }
 
 // AllVersions trả mọi phiên bản của mọi tài liệu (cho chế độ Eager và trang "Góc nhìn Cloud").
 func (c *CloudClient) AllVersions() ([]DocVersion, error) {
 	var vs []DocVersion
-	err := DoJSON(http.MethodGet, c.url("/versions"), "", nil, &vs)
+	err := DoJSON(http.MethodGet, c.url("/versions"), c.auth(), nil, &vs)
 	return vs, err
 }
 
 func (c *CloudClient) Versions(docID string) ([]DocVersion, error) {
 	var vs []DocVersion
-	err := DoJSON(http.MethodGet, c.url("/documents/%s/versions", docID), "", nil, &vs)
+	err := DoJSON(http.MethodGet, c.url("/documents/%s/versions", docID), c.auth(), nil, &vs)
 	return vs, err
 }
 
 func (c *CloudClient) CreateDocument(v *DocVersion) error {
-	return DoJSON(http.MethodPost, c.url("/documents"), "", v, nil)
+	return DoJSON(http.MethodPost, c.url("/documents"), c.auth(), v, nil)
 }
 
 func (c *CloudClient) AddVersion(v *DocVersion) error {
-	return DoJSON(http.MethodPost, c.url("/documents/%s/versions", v.DocID), "", v, nil)
+	return DoJSON(http.MethodPost, c.url("/documents/%s/versions", v.DocID), c.auth(), v, nil)
 }
 
 type RewrapRequest struct {
@@ -78,6 +95,16 @@ type RewrapRequest struct {
 func (c *CloudClient) Rewrap(docID string, version, gen int, wrapped []byte) error {
 	return DoJSON(http.MethodPut, c.url("/documents/%s/versions/%d/wrap", docID, version), c.Token,
 		RewrapRequest{ReadGen: gen, WrappedDEK: wrapped}, nil)
+}
+
+// ReplaceVersion (C3, content re-key): authority thay một phiên bản bằng bản mã mới (DEK mới, ký lại).
+func (c *CloudClient) ReplaceVersion(v *DocVersion) error {
+	return DoJSON(http.MethodPut, c.url("/documents/%s/versions/%d", v.DocID, v.Version), c.Token, v, nil)
+}
+
+// PutAuthorityKey: authority đăng public key dùng để kiểm access token (C2).
+func (c *CloudClient) PutAuthorityKey(pub []byte) error {
+	return DoJSON(http.MethodPut, c.url("/authority-key"), c.Token, map[string][]byte{"public_key": pub}, nil)
 }
 
 // DemoTamper: mô phỏng cloud độc hại sửa 1 byte bản mã (kịch bản E).

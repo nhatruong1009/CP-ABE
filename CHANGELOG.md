@@ -3,6 +3,22 @@
 Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầu danh sách (mới nhất ở trên), đồng thời tạo git commit tương ứng.
 Định dạng: `## [YYYY-MM-DD] Tiêu đề ngắn`, kèm các mục *Thêm / Sửa / Xóa / Nguồn mới*.
 
+## [2026-10-21] v4: thu hồi hai pha, cloud kiểm access token, công cụ đo (theo góp ý của thầy)
+
+**Thêm**
+- C7 · `code/shared/token.go`, `authority` `GET /users/{id}/token`: access token Ed25519 sống 5 phút, mang thuộc tính hiện hành. `cloud-api` nhận public key của authority qua `PUT /authority-key` (lưu bảng `settings`). Khi `CLOUD_ENFORCE_READ=true`, cloud bỏ `wrapped_dek`, `nonce`, `ciphertext` (trường `withheld`) với phiên bản mà token không thỏa chính sách đọc (`ABECouldDecrypt` trên `abe_wrapped_priv`, không giải mã gì). Ghi cần token hợp lệ. Mặc định tắt để giữ demo cũ.
+- C8 · thu hồi hai pha `mode=twophase`: pha 1 như Lazy (trả lời ngay), pha 2 chạy nền bọc lại DEK, phiên bản mới nhất trước, hủy thế hệ cũ khi xong, ghi audit `revoke.phase2`.
+- C9 · `mode=rekey`: pha 2 giải mã nội dung, mã hóa lại bằng DEK mới, ký lại bằng Write Key hiện hành, thay phiên bản qua `PUT /documents/{id}/versions/{v}` (cloud vẫn kiểm chữ ký). DEK user đã lưu không mở được bản mã mới.
+- C1 · `code/bench`: `bench micro` (chi phí từng thao tác, mô phỏng thu hồi theo D, đọc có/không cache), `bench e2e` (thu hồi trên stack Docker với D tài liệu), `bench dek` (kịch bản user đã lưu DEK + Policy Key). `bench/run_all.sh` chạy tất cả, kết quả ở `docs/bench-ket-qua.md`. Service `bench` trong compose (profile `bench`).
+- App: gửi access token của vai đang đóng; hiển thị "Cloud không trả bản mã…" (trạng thái `withheld`); ô chế độ thu hồi thêm "Hai pha" và "Hai pha + re-key".
+
+**Sửa**
+- `docker-compose.yml` và `README.md`: bỏ câu sai "cloud-api không gọi được authority" (authority và app cũng nằm trong `cloud_net`, API authority chưa xác thực).
+
+**Hạn chế đã biết:** hàng đợi pha 2 nằm trong RAM; re-key làm authority thấy plaintext và thay phiên bản cũ; token làm cloud biết thuộc tính người gọi.
+
+**Kiểm tra:** `docker compose build` (gồm `go vet ./...`) không lỗi; `bench/run_all.sh` chạy hết 20 cấu hình; giao diện kiểm tay với `CLOUD_ENFORCE_READ=true` (Bình sau thu hồi không nhận bản mã, Dũng vẫn ghi mà không đọc được Đề xuất ngân sách).
+
 ## [2026-10-19] Sửa câu mô tả chế độ Lazy / Eager cho đúng với code
 
 **Sửa**

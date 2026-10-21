@@ -64,6 +64,15 @@ func (c *AuthClient) UserKey(uid string) (*UserKey, error) {
 	return &out, DoJSON(http.MethodGet, c.Base+"/users/"+url.PathEscape(uid)+"/key", "", nil, &out)
 }
 
+// Token: access token ngắn hạn (C2) cho user, mang thuộc tính hiện hành.
+func (c *AuthClient) Token(uid string) (string, error) {
+	var out struct {
+		Token string `json:"token"`
+	}
+	err := DoJSON(http.MethodGet, c.Base+"/users/"+url.PathEscape(uid)+"/token", "", nil, &out)
+	return out.Token, err
+}
+
 func (c *AuthClient) Attributes() ([]AttributeView, error) {
 	var out []AttributeView
 	return out, DoJSON(http.MethodGet, c.Base+"/attributes", "", nil, &out)

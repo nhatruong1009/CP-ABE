@@ -9,6 +9,8 @@
   <select id="mode">
     <option value="lazy">Lazy: không bọc lại phiên bản cũ, phiên bản mới dùng thế hệ mới (rẻ)</option>
     <option value="eager">Eager: bọc lại ngay DEK các phiên bản còn ở thế hệ cũ, hủy thế hệ cũ</option>
+    <option value="twophase">Hai pha: mất quyền ngay, bọc lại DEK chạy nền (C4)</option>
+    <option value="rekey">Hai pha + re-key: mất quyền ngay, mã hóa lại nội dung bằng DEK mới chạy nền (C3)</option>
   </select>
 </div>
 

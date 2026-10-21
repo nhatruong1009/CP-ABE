@@ -37,14 +37,16 @@ type Vault struct {
 }
 
 // Session gom các lời gọi trong 1 request; chính sách chỉ tải 1 lần mỗi request.
+// cloud gửi kèm access token của user đang đóng vai (C2).
 type Session struct {
-	v    *Vault
-	ID   *Identity
-	pols map[string]*shared.Policy
+	v     *Vault
+	ID    *Identity
+	cloud *shared.CloudClient
+	pols  map[string]*shared.Policy
 }
 
-func (v *Vault) Session(id *Identity) *Session {
-	return &Session{v: v, ID: id, pols: map[string]*shared.Policy{}}
+func (v *Vault) Session(id *Identity, userToken string) *Session {
+	return &Session{v: v, ID: id, cloud: v.cloud.As(userToken), pols: map[string]*shared.Policy{}}
 }
 
 // Policy tải chính sách từ cloud và KIỂM CHỮ KÝ authority, nên cloud không tráo được Policy Key.
@@ -207,6 +209,23 @@ func (s *Session) Read(v shared.DocVersion) (res ReadResult) {
 	st.add("ciphertext ("+sizeOf(v.Ciphertext)+")", hx(v.Ciphertext), true)
 	st.add("signature ("+sizeOf(v.Signature)+")", hx(v.Signature), true)
 	st.add("created_at", v.CreatedAt.Local().Format("02/01/2006 15:04:05"), false)
+	if v.Withheld {
+		st.Status = "fail"
+		st.bad("Cloud từ chối trả bản mã", "✖ access token của "+s.ID.Name+
+			" không thỏa chính sách đọc, cloud bỏ wrapped_dek / nonce / ciphertext (C2). DEK đã lưu từ trước cũng không có bản mã để mở.")
+		t.end(st)
+		skip("Tải header chính sách đọc & kiểm chữ ký authority", "Đối chiếu thuộc tính", "Tầng 1 · CP-ABE",
+			"Tầng 2 · Mở DEK", "Tầng 3 · Giải mã nội dung AES-256-GCM", "Kiểm chữ ký ghi (Ed25519)")
+		if rp, err := s.Policy(v.ReadPolicyID); err == nil {
+			res.ReadLogical, res.CurReadGen = rp.Logical, rp.CurrentGen
+		}
+		if wp, err := s.Policy(v.WritePolicyID); err == nil {
+			res.WriteLogical, res.CurWriteGen = wp.Logical, wp.CurrentGen
+		}
+		res.CanWrite = s.CanWrite(v.WritePolicyID)
+		res.Status, res.Msg = "withheld", "Cloud không trả bản mã cho người không đủ quyền đọc"
+		return res
+	}
 	t.end(st)
 
 	// 2. Header chính sách đọc + kiểm chữ ký authority.

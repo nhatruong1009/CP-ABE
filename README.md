@@ -36,7 +36,7 @@ Dừng: `docker compose down`. Xóa sạch dữ liệu (Master Key, khóa, DB) �
 |---|---|---|
 | `authority` | Tin cậy | Key Authority: Master Key, thuộc tính có version, chính sách, Policy Key theo thế hệ, cấp/thu hồi |
 | `app` | Tin cậy | Web UI. Mã hóa/giải mã/ký tại chỗ. `keystore` mô phỏng thiết bị của user |
-| `cloud-api` | Cloud | Lưu bản mã, kiểm chữ ký ghi. **Không có khóa bí mật** và không gọi được `authority` |
+| `cloud-api` | Cloud | Lưu bản mã, kiểm chữ ký ghi. **Không có khóa bí mật**. Lưu ý: `authority` cũng nằm trong `cloud_net` và API chưa xác thực, nên `cloud-api` vẫn gọi được `authority` (hạn chế đã biết) |
 | `cloud-db` | Cloud | PostgreSQL |
 | `cloud-admin` | Cloud | Adminer |
 

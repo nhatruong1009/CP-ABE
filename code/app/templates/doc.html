@@ -14,6 +14,8 @@
       <h1>{{$l.Msg}}</h1>
       {{if eq $l.Status "noaccess"}}<p>Cần thỏa chính sách: <code>{{$l.ReadLogical}}</code></p>
       <p class="muted">Bản mã CP-ABE của Policy Key thế hệ {{$l.V.ReadGen}} không mở được bằng khóa hiện tại.</p>{{end}}
+      {{if eq $l.Status "withheld"}}<p>Cần thỏa chính sách: <code>{{$l.ReadLogical}}</code></p>
+      <p class="muted">Cloud kiểm access token và không trả wrapped_dek / nonce / ciphertext (C2).</p>{{end}}
       {{if eq $l.Status "tampered"}}<p>AES-GCM phát hiện bản mã trên cloud đã bị thay đổi.
         {{if not $l.SigOK}}Chữ ký ghi cũng không còn khớp.{{end}}</p>{{end}}
     </div>

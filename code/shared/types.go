@@ -62,6 +62,8 @@ type DocVersion struct {
 	WriteGen      int       `json:"write_gen"`
 	Signature     []byte    `json:"signature"`
 	CreatedAt     time.Time `json:"created_at"`
+	// Withheld (C2): cloud không trả wrapped_dek / nonce / ciphertext vì token không thỏa chính sách đọc.
+	Withheld bool `json:"withheld,omitempty"`
 }
 
 // Payload: phần plaintext, chỉ tồn tại trong vùng tin cậy.

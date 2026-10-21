@@ -8,11 +8,13 @@ COPY shared ./shared
 COPY authority ./authority
 COPY app ./app
 COPY cloudapi ./cloudapi
+COPY bench ./bench
 # Phiên bản thư viện được cố định trong go.mod / go.sum.
 RUN go vet ./... && \
     go build -o /out/authority ./authority && \
     go build -o /out/app ./app && \
-    go build -o /out/cloudapi ./cloudapi
+    go build -o /out/cloudapi ./cloudapi && \
+    go build -o /out/bench ./bench
 
 FROM alpine:3.20
 RUN adduser -D -u 10001 svc && mkdir -p /data /keystore && chown svc /data /keystore

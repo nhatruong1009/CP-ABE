@@ -179,7 +179,12 @@ func (s *Server) page(h func(*ctx) (string, error)) http.HandlerFunc {
 			return
 		}
 		c.page.Me = id
-		c.sess = s.vault.Session(id)
+		tok, err := s.auth.Token(id.UserID)
+		if err != nil {
+			http.Error(w, "Không lấy được access token từ authority: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		c.sess = s.vault.Session(id, tok)
 		tpl, err := h(c)
 		if err != nil {
 			c.page.Error = err.Error()

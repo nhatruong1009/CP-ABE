@@ -12,7 +12,7 @@ import (
 
 func (s *Server) handleIndex(c *ctx) (string, error) {
 	c.page.Title, c.page.Nav = "Kho tài liệu", "index"
-	docs, err := s.cloud.ListDocuments()
+	docs, err := c.sess.cloud.ListDocuments()
 	if err != nil {
 		return "index.html", err
 	}
@@ -33,7 +33,7 @@ type docData struct {
 
 func (s *Server) handleDoc(c *ctx) (string, error) {
 	c.page.Title, c.page.Nav = "Tài liệu", "index"
-	vs, err := s.cloud.Versions(c.r.PathValue("id"))
+	vs, err := c.sess.cloud.Versions(c.r.PathValue("id"))
 	if err != nil {
 		return "doc.html", err
 	}
@@ -124,7 +124,7 @@ func (s *Server) handleNew(c *ctx) (string, error) {
 
 func (s *Server) handleEditForm(c *ctx) (string, error) {
 	c.page.Title, c.page.Nav = "Sửa tài liệu", "index"
-	vs, err := s.cloud.Versions(c.r.PathValue("id"))
+	vs, err := c.sess.cloud.Versions(c.r.PathValue("id"))
 	if err != nil || len(vs) == 0 {
 		return c.redirect("/", "", "Không tìm thấy tài liệu")
 	}
@@ -139,7 +139,7 @@ func (s *Server) handleEditForm(c *ctx) (string, error) {
 func (s *Server) handleEdit(c *ctx) (string, error) {
 	id := c.r.PathValue("id")
 	base, _ := strconv.Atoi(c.r.FormValue("base_version"))
-	vs, err := s.cloud.Versions(id)
+	vs, err := c.sess.cloud.Versions(id)
 	if err != nil || len(vs) == 0 {
 		return c.redirect("/", "", "Không tìm thấy tài liệu")
 	}
@@ -155,7 +155,7 @@ func (s *Server) handleEdit(c *ctx) (string, error) {
 
 func (s *Server) handleForge(c *ctx) (string, error) {
 	id := c.r.PathValue("id")
-	vs, err := s.cloud.Versions(id)
+	vs, err := c.sess.cloud.Versions(id)
 	if err != nil || len(vs) == 0 {
 		return c.redirect("/", "", "Không tìm thấy tài liệu")
 	}
@@ -222,7 +222,7 @@ func (s *Server) handleCloud(c *ctx) (string, error) {
 	if d.Policies, err = s.cloud.ListPolicies(); err != nil {
 		return "cloud.html", err
 	}
-	if d.Versions, err = s.cloud.AllVersions(); err != nil {
+	if d.Versions, err = c.sess.cloud.AllVersions(); err != nil {
 		return "cloud.html", err
 	}
 	sort.SliceStable(d.Versions, func(i, j int) bool { return d.Versions[i].CreatedAt.Before(d.Versions[j].CreatedAt) })

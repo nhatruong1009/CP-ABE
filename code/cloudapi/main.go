@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -51,11 +53,19 @@ CREATE TABLE IF NOT EXISTS document_versions (
   signature       BYTEA NOT NULL,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (doc_id, version)
+);
+CREATE TABLE IF NOT EXISTS settings (
+  k TEXT PRIMARY KEY,
+  v BYTEA NOT NULL
 );`
 
 type server struct {
-	db    *pgxpool.Pool
-	token string
+	db      *pgxpool.Pool
+	token   string
+	enforce bool // C2: chỉ trả bản mã cho token thỏa chính sách đọc
+
+	mu      sync.RWMutex
+	authPub []byte // public key của authority, dùng kiểm access token
 }
 
 func main() {
@@ -78,7 +88,9 @@ func main() {
 	if _, err := db.Exec(ctx, schema); err != nil {
 		log.Fatalf("tạo schema: %v", err)
 	}
-	s := &server{db: db, token: os.Getenv("CLOUD_ADMIN_TOKEN")}
+	s := &server{db: db, token: os.Getenv("CLOUD_ADMIN_TOKEN"), enforce: os.Getenv("CLOUD_ENFORCE_READ") == "true"}
+	_ = db.QueryRow(ctx, `SELECT v FROM settings WHERE k='authority_pub'`).Scan(&s.authPub)
+	log.Printf("C2 chặn trả bản mã theo token: %v", s.enforce)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
@@ -91,6 +103,8 @@ func main() {
 	mux.HandleFunc("POST /documents", s.createDocument)
 	mux.HandleFunc("POST /documents/{id}/versions", s.addVersion)
 	mux.HandleFunc("PUT /documents/{id}/versions/{v}/wrap", s.admin(s.rewrap))
+	mux.HandleFunc("PUT /documents/{id}/versions/{v}", s.admin(s.replaceVersion))
+	mux.HandleFunc("PUT /authority-key", s.admin(s.putAuthorityKey))
 	mux.HandleFunc("POST /_demo/tamper/{id}/{v}", s.demoTamper)
 
 	log.Println("cloud-api lắng nghe :8082")
@@ -113,6 +127,76 @@ func (s *server) admin(h http.HandlerFunc) http.HandlerFunc {
 		}
 		h(w, r)
 	}
+}
+
+// ---------- C2: access token ----------
+
+// caller xác định ai đang gọi: authority (admin token), user (access token hợp lệ), hoặc ẩn danh.
+// Token sai chữ ký / hết hạn → lỗi (401).
+func (s *server) caller(r *http.Request) (admin bool, tok *shared.AccessToken, err error) {
+	h, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if !ok || h == "" {
+		return false, nil, nil
+	}
+	if s.token != "" && h == s.token {
+		return true, nil, nil
+	}
+	s.mu.RLock()
+	pub := s.authPub
+	s.mu.RUnlock()
+	if pub == nil {
+		return false, nil, errors.New("cloud chưa có public key của authority")
+	}
+	tok, err = shared.ParseToken(pub, h)
+	return false, tok, err
+}
+
+func (s *server) putAuthorityKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PublicKey []byte `json:"public_key"`
+	}
+	if err := shared.ReadJSON(r, &req); err != nil || len(req.PublicKey) != 32 {
+		shared.WriteErr(w, http.StatusBadRequest, "public key không hợp lệ")
+		return
+	}
+	if _, err := s.db.Exec(r.Context(), `INSERT INTO settings (k, v) VALUES ('authority_pub', $1)
+		ON CONFLICT (k) DO UPDATE SET v=$1`, req.PublicKey); err != nil {
+		shared.WriteErr(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	s.mu.Lock()
+	s.authPub = req.PublicKey
+	s.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// gate: ở chế độ enforce, phiên bản nào token không thỏa chính sách đọc thì bỏ wrapped_dek / nonce / ciphertext.
+// Cloud chỉ so thuộc tính với bản mã CP-ABE của Policy Key (CouldDecrypt), không giải mã gì.
+func (s *server) gate(ctx context.Context, admin bool, tok *shared.AccessToken, vs []shared.DocVersion) error {
+	if !s.enforce || admin {
+		return nil
+	}
+	allowed := map[string]bool{}
+	for i := range vs {
+		v := &vs[i]
+		k := v.ReadPolicyID + "|" + strconv.Itoa(v.ReadGen)
+		ok, seen := allowed[k]
+		if !seen {
+			if tok != nil {
+				p, err := s.loadPolicy(ctx, v.ReadPolicyID)
+				if err != nil {
+					return err
+				}
+				pk := p.Key(v.ReadGen)
+				ok = pk != nil && len(pk.ABEWrappedPriv) > 0 && shared.ABECouldDecrypt(tok.Attrs, pk.ABEWrappedPriv)
+			}
+			allowed[k] = ok
+		}
+		if !ok {
+			v.WrappedDEK, v.Nonce, v.Ciphertext, v.Withheld = nil, nil, nil, true
+		}
+	}
+	return nil
 }
 
 // ---------- Policies ----------
@@ -227,12 +311,20 @@ func scanVersions(rows pgx.Rows) ([]shared.DocVersion, error) {
 }
 
 func (s *server) queryVersions(w http.ResponseWriter, r *http.Request, sql string, args ...any) {
+	admin, tok, err := s.caller(r)
+	if err != nil {
+		shared.WriteErr(w, http.StatusUnauthorized, "%v", err)
+		return
+	}
 	rows, err := s.db.Query(r.Context(), sql, args...)
 	if err != nil {
 		shared.WriteErr(w, http.StatusInternalServerError, "%v", err)
 		return
 	}
 	vs, err := scanVersions(rows)
+	if err == nil {
+		err = s.gate(r.Context(), admin, tok, vs)
+	}
 	if err != nil {
 		shared.WriteErr(w, http.StatusInternalServerError, "%v", err)
 		return
@@ -312,13 +404,18 @@ func (s *server) addVersion(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) insertVersion(w http.ResponseWriter, r *http.Request, v *shared.DocVersion, create bool) {
 	ctx := r.Context()
+	admin, tok, err := s.caller(r)
+	if err != nil || (s.enforce && !admin && tok == nil) {
+		shared.WriteErr(w, http.StatusUnauthorized, "cần access token hợp lệ để ghi (%v)", err)
+		return
+	}
 	if code, msg := s.checkWrite(ctx, v); code != 0 {
 		log.Printf("TỪ CHỐI ghi %s v%d: %s", v.DocID, v.Version, msg)
 		shared.WriteErr(w, code, "%s", msg)
 		return
 	}
 	var conflict string
-	err := pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
+	err = pgx.BeginFunc(ctx, s.db, func(tx pgx.Tx) error {
 		if create {
 			tag, err := tx.Exec(ctx, `INSERT INTO documents (doc_id, latest_version) VALUES ($1, 1) ON CONFLICT DO NOTHING`, v.DocID)
 			if err != nil {
@@ -368,6 +465,36 @@ func (s *server) rewrap(w http.ResponseWriter, r *http.Request) {
 		r.PathValue("id"), ver, req.ReadGen, req.WrappedDEK)
 	if err != nil {
 		shared.WriteErr(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// replaceVersion (C3, content re-key): authority thay bản mã của một phiên bản đã có
+// bằng DEK mới, ký lại bằng Write Key hiện hành. Cloud vẫn kiểm chữ ký như khi ghi.
+// Đánh đổi: phiên bản cũ không còn append-only.
+func (s *server) replaceVersion(w http.ResponseWriter, r *http.Request) {
+	var v shared.DocVersion
+	ver, _ := strconv.Atoi(r.PathValue("v"))
+	if err := shared.ReadJSON(r, &v); err != nil || v.DocID != r.PathValue("id") || v.Version != ver {
+		shared.WriteErr(w, http.StatusBadRequest, "dữ liệu không hợp lệ")
+		return
+	}
+	if code, msg := s.checkWrite(r.Context(), &v); code != 0 {
+		shared.WriteErr(w, code, "%s", msg)
+		return
+	}
+	tag, err := s.db.Exec(r.Context(), `UPDATE document_versions SET read_gen=$3, wrapped_dek=$4, nonce=$5,
+		ciphertext=$6, write_gen=$7, signature=$8 WHERE doc_id=$1 AND version=$2
+		AND read_policy_id=$9 AND write_policy_id=$10`,
+		v.DocID, v.Version, v.ReadGen, v.WrappedDEK, v.Nonce, v.Ciphertext, v.WriteGen, v.Signature,
+		v.ReadPolicyID, v.WritePolicyID)
+	if err != nil {
+		shared.WriteErr(w, http.StatusInternalServerError, "%v", err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		shared.WriteErr(w, http.StatusNotFound, "không có phiên bản")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

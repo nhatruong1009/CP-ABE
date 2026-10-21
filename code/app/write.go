@@ -204,9 +204,9 @@ func (s *Session) Write(docID string, version int, readPID, writePID string, p s
 	st.add("Gửi đi", fmt.Sprintf("v%d · read_gen %d · write_gen %d · %d byte ciphertext · KHÔNG có plaintext, KHÔNG có khóa",
 		v.Version, v.ReadGen, v.WriteGen, len(v.Ciphertext)), false)
 	if version == 1 {
-		err = s.v.cloud.CreateDocument(v)
+		err = s.cloud.CreateDocument(v)
 	} else {
-		err = s.v.cloud.AddVersion(v)
+		err = s.cloud.AddVersion(v)
 	}
 	var he *shared.HTTPError
 	switch {

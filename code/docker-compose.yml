@@ -34,7 +34,8 @@ services:
     depends_on: [authority, cloud-api]
 
   # ---------- VÙNG KHÔNG TIN CẬY (cloud) ----------
-  # cloud-api chỉ nằm trong cloud_net nên KHÔNG gọi được authority.
+  # cloud-api chỉ nằm trong cloud_net, nhưng authority và app cũng nằm trong cloud_net
+  # và API của authority chưa xác thực, nên cloud-api VẪN gọi được authority (xem Hạn chế).
   cloud-api:
     image: cpabe-demo:latest
     pull_policy: never
@@ -42,6 +43,8 @@ services:
     environment:
       DATABASE_URL: postgres://cloud:cloud@cloud-db:5432/cloud?sslmode=disable
       CLOUD_ADMIN_TOKEN: ${CLOUD_ADMIN_TOKEN:-demo-authority-token}
+      # C2: true = chỉ trả bản mã cho access token thỏa chính sách đọc (mặc định tắt để giữ demo cũ)
+      CLOUD_ENFORCE_READ: ${CLOUD_ENFORCE_READ:-false}
     networks: [cloud_net]
     depends_on: [cloud-db]
 
@@ -55,6 +58,17 @@ services:
     image: adminer:4
     networks: [cloud_net]
     ports: ["${ADMINER_PORT:-8090}:8080"]
+
+  # C1: công cụ đo, chỉ chạy khi gọi: docker compose run --rm bench micro
+  bench:
+    image: cpabe-demo:latest
+    pull_policy: never
+    entrypoint: ["bench"]
+    profiles: [bench]
+    environment:
+      AUTHORITY_URL: http://authority:8081
+      CLOUD_URL: http://cloud-api:8082
+    networks: [trusted_net, cloud_net]
 
 networks:
   trusted_net: {}

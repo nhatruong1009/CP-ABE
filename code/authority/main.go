@@ -40,6 +40,7 @@ func main() {
 	mux.HandleFunc("GET /attributes", a.handleAttributes)
 	mux.HandleFunc("GET /users", a.handleUsers)
 	mux.HandleFunc("GET /users/{id}/key", a.handleUserKey)
+	mux.HandleFunc("GET /users/{id}/token", a.handleUserToken)
 	mux.HandleFunc("POST /users/{id}/attributes", a.handleGrant)
 	mux.HandleFunc("DELETE /users/{id}/attributes/{attr}", a.handleRevoke)
 	mux.HandleFunc("GET /policies", a.handlePolicies)
@@ -87,6 +88,10 @@ func (a *Authority) init() error {
 		}
 		log.Println("chờ cloud-api...")
 		time.Sleep(2 * time.Second)
+	}
+	// C2: cloud cần public key của authority để kiểm access token.
+	if err := a.cloud.PutAuthorityKey(a.st.SignKey.Public().(ed25519.PublicKey)); err != nil {
+		return fmt.Errorf("đăng public key lên cloud: %w", err)
 	}
 	// Đăng lại mọi chính sách (idempotent) để cloud luôn đồng bộ với authority.
 	for _, p := range a.st.Policies {
@@ -209,7 +214,13 @@ func (a *Authority) grant(uid, attr string) (string, error) {
 
 // revoke – UC5: tăng version thuộc tính, cấp lại khóa cho người còn giữ thuộc tính,
 // sinh thế hệ Policy Key mới cho mọi chính sách liên quan, mã hóa lại các thế hệ cũ.
+// mode: lazy | eager (bọc lại đồng bộ) | twophase (pha 2 bọc lại chạy nền) | rekey (pha 2 mã hóa lại nội dung chạy nền).
 func (a *Authority) revoke(uid, attr, mode string) (string, error) {
+	switch mode {
+	case "", "lazy", "eager", "twophase", "rekey":
+	default:
+		return "", fmt.Errorf("chế độ thu hồi không hợp lệ: %s", mode)
+	}
 	u, ok := a.st.Users[uid]
 	if !ok {
 		return "", fmt.Errorf("không có user %s", uid)
@@ -253,13 +264,26 @@ func (a *Authority) revoke(uid, attr, mode string) (string, error) {
 
 	msg := fmt.Sprintf("Thu hồi %s của %s: %s v%d→v%d · KeyGen lại %d user (%v) · %d chính sách sang thế hệ mới",
 		attr, u.Name, attr, at.Version-1, at.Version, len(rekeyed), rekeyed, len(affected))
-	if mode == "eager" {
-		n, err := a.eagerRewrap(affected)
+	switch mode {
+	case "eager":
+		n, err := a.eagerRewrap(affected, false)
 		if err != nil {
 			return "", err
 		}
 		msg += fmt.Sprintf(" · EAGER: bọc lại DEK của %d phiên bản tài liệu, hủy thế hệ cũ", n)
-	} else {
+	case "twophase", "rekey":
+		msg += " · HAI PHA: pha 1 xong (mất quyền ngay); pha 2 "
+		if mode == "rekey" {
+			msg += "mã hóa lại nội dung (DEK mới) chạy nền"
+		} else {
+			msg += "bọc lại DEK chạy nền"
+		}
+		ids := make([]string, len(affected))
+		for i, p := range affected {
+			ids[i] = p.ID
+		}
+		go a.phase2(ids, mode == "rekey")
+	default:
 		msg += " · LAZY: phiên bản cũ giữ thế hệ khóa cũ; lần sửa sau tạo phiên bản mới dùng thế hệ mới"
 	}
 	msg += fmt.Sprintf(" · %v", time.Since(start).Round(time.Millisecond))
@@ -267,9 +291,38 @@ func (a *Authority) revoke(uid, attr, mode string) (string, error) {
 	return msg, nil
 }
 
+// phase2 (C4): pha 2 của thu hồi hai pha, chạy sau khi handler trả lời.
+// Lấy lại khóa authority nên các thao tác khác chờ tới khi xong; mỗi lần ghi lên cloud là idempotent.
+func (a *Authority) phase2(ids []string, rekey bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	start := time.Now()
+	var pols []*PolicyRec
+	for _, id := range ids {
+		if p := a.st.Policies[id]; p != nil {
+			pols = append(pols, p)
+		}
+	}
+	n, err := a.eagerRewrap(pols, rekey)
+	what := "bọc lại DEK"
+	if rekey {
+		what = "mã hóa lại nội dung (DEK mới, ký lại)"
+	}
+	msg := fmt.Sprintf("Pha 2: %s %d phiên bản, hủy thế hệ cũ · %v", what, n, time.Since(start).Round(time.Millisecond))
+	if err != nil {
+		msg += " · LỖI: " + err.Error()
+	}
+	a.st.audit("revoke.phase2", msg)
+	a.persist()
+	log.Println(msg)
+}
+
 // eagerRewrap bọc lại DEK của mọi phiên bản còn dùng thế hệ cũ sang thế hệ hiện hành,
 // rồi hủy hẳn các thế hệ cũ. Nội dung không cần mã hóa lại; chữ ký vẫn hợp lệ.
-func (a *Authority) eagerRewrap(pols []*PolicyRec) (int, error) {
+// rekey = true (C3, content re-key): thay vì bọc lại cùng DEK, giải mã nội dung, mã hóa lại bằng DEK MỚI
+// và ký lại bằng Write Key hiện hành, nên DEK cũ user đã lưu cũng vô dụng. Authority thấy plaintext.
+// Phiên bản mới nhất được xử lý trước.
+func (a *Authority) eagerRewrap(pols []*PolicyRec, rekey bool) (int, error) {
 	byID := map[string]*PolicyRec{}
 	for _, p := range pols {
 		if p.Kind == shared.KindRead {
@@ -283,6 +336,7 @@ func (a *Authority) eagerRewrap(pols []*PolicyRec) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	sort.SliceStable(versions, func(i, j int) bool { return versions[i].Version > versions[j].Version })
 	n := 0
 	for _, v := range versions {
 		p := byID[v.ReadPolicyID]
@@ -296,6 +350,13 @@ func (a *Authority) eagerRewrap(pols []*PolicyRec) (int, error) {
 		dek, err := shared.UnwrapDEK(old.Pub, old.Priv, v.WrappedDEK)
 		if err != nil {
 			return n, fmt.Errorf("mở DEK %s v%d: %w", v.DocID, v.Version, err)
+		}
+		if rekey {
+			if err := a.rekeyContent(v, dek, p); err != nil {
+				return n, err
+			}
+			n++
+			continue
 		}
 		wrapped, err := shared.WrapDEK(cur.Pub, dek)
 		if err != nil {
@@ -312,11 +373,39 @@ func (a *Authority) eagerRewrap(pols []*PolicyRec) (int, error) {
 				g.ABECt, g.Priv, g.Compiled = nil, nil, "(đã hủy - eager)"
 			}
 		}
+		if rekey {
+			for _, g := range p.Gens {
+				if g.ABECt == nil {
+					g.Compiled = "(đã hủy - re-key)"
+				}
+			}
+		}
 		if err := a.publish(p); err != nil {
 			return n, err
 		}
 	}
 	return n, nil
+}
+
+// rekeyContent (C3): mã hóa lại nội dung một phiên bản bằng DEK mới, bọc theo thế hệ hiện hành,
+// ký lại bằng Write Key hiện hành rồi thay phiên bản trên cloud.
+func (a *Authority) rekeyContent(v shared.DocVersion, dek []byte, rp *PolicyRec) error {
+	payload, err := shared.OpenPayload(dek, v.Nonce, v.Ciphertext, v.AAD())
+	if err != nil {
+		return fmt.Errorf("giải mã %s v%d: %w", v.DocID, v.Version, err)
+	}
+	wp := a.st.Policies[v.WritePolicyID]
+	if wp == nil || wp.Gens[wp.CurrentGen] == nil || wp.Gens[wp.CurrentGen].Priv == nil {
+		return fmt.Errorf("thiếu Write Key hiện hành của %s", v.WritePolicyID)
+	}
+	cur := rp.Gens[rp.CurrentGen]
+	nv, err := shared.BuildVersion(v.DocID, v.Version, payload, v.ReadPolicyID,
+		&shared.PolicyKey{Gen: rp.CurrentGen, PublicKey: cur.Pub},
+		v.WritePolicyID, wp.CurrentGen, wp.Gens[wp.CurrentGen].Priv)
+	if err != nil {
+		return err
+	}
+	return a.cloud.ReplaceVersion(nv)
 }
 
 // ---------------- HTTP ----------------
@@ -362,6 +451,23 @@ func (a *Authority) handleUserKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	shared.WriteJSON(w, 200, shared.UserKey{UserID: u.ID, Epoch: u.KeyEpoch, Attrs: u.KeyAttrs, Key: u.Key})
+}
+
+// handleUserToken (C2): access token ngắn hạn mang thuộc tính hiện hành của user, ký bằng khóa authority.
+func (a *Authority) handleUserToken(w http.ResponseWriter, r *http.Request) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	u, ok := a.st.Users[r.PathValue("id")]
+	if !ok {
+		shared.WriteErr(w, 404, "không có user")
+		return
+	}
+	tok, err := shared.SignToken(a.st.SignKey, &shared.AccessToken{UserID: u.ID, Attrs: u.KeyAttrs, Exp: time.Now().Add(shared.TokenTTL)})
+	if err != nil {
+		shared.WriteErr(w, 500, "%v", err)
+		return
+	}
+	shared.WriteJSON(w, 200, map[string]string{"token": tok})
 }
 
 func (a *Authority) handleGrant(w http.ResponseWriter, r *http.Request) {

@@ -36,7 +36,7 @@ check "A · Góc nhìn Cloud không có plaintext" '! page an /cloud | has "Doan
 check "B · Dũng chỉ đọc được Đặc tả Alpha" '[ "$(unlocked dung)" = 1 ] && page dung / | has "<b>Đặc tả dự án Alpha"'
 check "I · Dũng ghi được Đề xuất ngân sách" 'post dung /doc/$BUDGET/edit -d base_version=1 -d title=T -d body=B | has "Đã lưu phiên bản 2"'
 check "I · …nhưng Dũng vẫn không đọc được" 'page dung /doc/$BUDGET | has "Không đủ thuộc tính"'
-check "D · Bình ghi trái phép → cloud trả 403" 'post binh /doc/$Q3/forge | has "403"'
+check "D · Bình ghi trái phép → cloud trả 403" 'post binh /doc/$Q3/forge -d confirm=1 | has "403"'
 post an /admin/revoke -d user=binh -d attr=dept_finance -d mode=lazy >/dev/null
 post an /doc/$Q3/edit -d base_version=1 -d title=Q3 -d body=v2 >/dev/null
 check "C · Sau thu hồi dept_finance, Bình không đọc được Q3" 'page binh /doc/$Q3 | has "Không đủ thuộc tính"'

@@ -17,7 +17,9 @@ Mỗi lần thay đổi tài liệu/mã nguồn thì thêm một mục ở đầ
 
 **Hạn chế đã biết:** hàng đợi pha 2 nằm trong RAM; re-key làm authority thấy plaintext và thay phiên bản cũ; token làm cloud biết thuộc tính người gọi.
 
-**Kiểm tra:** `docker compose build` (gồm `go vet ./...`) không lỗi; `bench/run_all.sh` chạy hết 20 cấu hình; giao diện kiểm tay với `CLOUD_ENFORCE_READ=true` (Bình sau thu hồi không nhận bản mã, Dũng vẫn ghi mà không đọc được Đề xuất ngân sách).
+- `code/test/e2e.sh`: kiểm thử tự động kịch bản A–K + bench dek qua Web UI, trên project riêng `cpabe-test`. README thêm hướng dẫn chạy các chế độ thu hồi, bật C7, kiểm thử, đo hiệu năng. `bench/run_all.sh` chạy trên project riêng `cpabe-bench` (không xóa dữ liệu stack demo).
+
+**Kiểm tra:** clone sạch nhánh `v4-cai-tien` rồi `bash test/e2e.sh`: 19 đạt, 0 lỗi; `docker compose build` (gồm `go vet ./...`) không lỗi; `bench/run_all.sh` chạy hết 20 cấu hình; giao diện kiểm tay với `CLOUD_ENFORCE_READ=true` (Bình sau thu hồi không nhận bản mã, Dũng vẫn ghi mà không đọc được Đề xuất ngân sách).
 
 ## [2026-10-19] Sửa câu mô tả chế độ Lazy / Eager cho đúng với code
 
